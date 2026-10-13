@@ -1,0 +1,13 @@
+The Windows portable distribution includes the unmodified x64 VCRUNTIME140.dll
+from the Microsoft Visual Studio 2022 Visual C++ redistributable directory.
+Microsoft Corporation. All rights reserved.
+
+This component is distributed under Microsoft's Visual Studio licence terms,
+separately from PhotoCraft's MIT OR Apache-2.0 source licence.
+
+Distributable files and terms:
+https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution
+https://visualstudio.microsoft.com/license-terms/vs2022-ga-community/
+
+The DLL is included beside the executables so a separate Visual C++ runtime
+installation is unnecessary for this portable Windows build.

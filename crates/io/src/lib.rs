@@ -40,6 +40,7 @@ pub mod blocks;
 pub mod camera_raw_xmp;
 mod channel_map;
 pub mod comps_map;
+pub mod dds;
 pub mod effects_map;
 pub mod exr_parts;
 mod flat;
@@ -268,6 +269,10 @@ pub fn import_with_svg_group_depth_and_interrupt(
 }
 
 fn import_stages(name: &str, bytes: &[u8], ctl: &photocraft_raster::Interrupt, max_group_depth: usize) -> Result<ImportResult, IoError> {
+    if bytes.starts_with(b"DDS ") {
+        ctl.check().map_err(|_| IoError::Cancelled)?;
+        return dds::import(name, bytes);
+    }
     // A declared native extension must reach its loader so malformed bundles retain format errors.
     if has_extension(name, photocraft_format::EXTENSION) || photocraft_format::is_pcraft(bytes) {
         return Ok(ImportResult { document: photocraft_format::load_from_bytes(bytes)?, warnings: Vec::new(), source_read_only: false, preview_only: false });
@@ -378,6 +383,10 @@ const PSD_MODEL_DONE: f32 = 0.9;
 
 fn export_stages(doc: &Document, name_or_ext: &str, opts: &ExportOptions, ctl: &photocraft_raster::Interrupt) -> Result<ExportResult, IoError> {
     let ext = extension(name_or_ext);
+    if ext == "dds" {
+        ctl.check().map_err(|_| IoError::Cancelled)?;
+        return dds::export(doc, opts);
+    }
     if ext == "pdn" {
         return Err(IoError::Unsupported("PDN is import-only; save as .pcraft to preserve all layers and blend modes".into()));
     }

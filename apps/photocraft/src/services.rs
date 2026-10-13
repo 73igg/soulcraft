@@ -65,6 +65,7 @@ const SAVE_FILTERS: &[(&str, &[&str])] = &[
     ("GIF", &["gif"]),
     ("ICO", &["ico"]),
     ("OpenEXR", &["exr"]),
+    ("DDS Texture", &["dds"]),
     ("FITS", &["fits", "fit"]),
     ("DPX", &["dpx"]),
 ];
@@ -229,6 +230,9 @@ fn write_atomic_progress(path: &Path, bytes: &[u8], progress: &dyn Fn(f32)) -> R
 
 fn export_options(settings: &photocraft_ui_egui::ExportSettings) -> photocraft_io::ExportOptions {
     let mut opts = photocraft_io::ExportOptions::default();
+    if let Some(dds) = &settings.dds {
+        opts.encode.dds = dds.clone();
+    }
     if let Some(q) = settings.jpeg_quality {
         opts.encode.jpeg_quality = q;
     }

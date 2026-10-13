@@ -14,6 +14,12 @@ use serde_json::{Value, json};
 pub const USAGE: &str = "\
 photocraft-cli: headless Photocraft
 
+DDS OPTIONS (convert, run, batch):
+  --dds-format <auto|bc1|bc2|bc3|bc4|bc4s|bc5|bc5s|bc6h|bc6hs|bc7|rgba8|rgba16|rgba16f|rgba32f|...>
+  --dds-mipmaps <preserve|generate|none>
+  --dds-texture <preserve|image|array|cube|volume>
+  --dds-color <auto|srgb|linear>  --dds-quality <fast|normal|high>
+
 USAGE:
   photocraft-cli convert <in> <out> [--format <ext>] [--quality <1-100>] [--tiff-layers] [--tga-bits <24|32>] [--dpx-bits <8|10|12|16>]
       Convert between formats (.pcraft, .psd, .png, .jpg, .tif, .webp, .exr, …).
@@ -69,17 +75,50 @@ struct Subcommand {
 }
 
 const SUBCOMMANDS: &[Subcommand] = &[
-    Subcommand { name: "convert", values: &["--format", "--quality", "--tga-bits", "--dpx-bits"], bare: &["--tiff-layers"], run: convert },
+    Subcommand {
+        name: "convert",
+        values: &["--format", "--quality", "--tga-bits", "--dpx-bits", "--dds-format", "--dds-mipmaps", "--dds-texture", "--dds-color", "--dds-quality"],
+        bare: &["--tiff-layers"],
+        run: convert,
+    },
     Subcommand { name: "info", values: &[], bare: &["--compact"], run: |a, out, _| info(a, out) },
     Subcommand {
         name: "run",
-        values: &["--new", "--cmd", "--params", "--out", "--format", "--quality", "--tga-bits", "--dpx-bits"],
+        values: &[
+            "--new",
+            "--cmd",
+            "--params",
+            "--out",
+            "--format",
+            "--quality",
+            "--tga-bits",
+            "--dpx-bits",
+            "--dds-format",
+            "--dds-mipmaps",
+            "--dds-texture",
+            "--dds-color",
+            "--dds-quality",
+        ],
         bare: &["--tiff-layers"],
         run: run_cmds,
     },
     Subcommand {
         name: "batch",
-        values: &["--actions", "--action", "--in", "--out", "--format", "--quality", "--tga-bits", "--dpx-bits"],
+        values: &[
+            "--actions",
+            "--action",
+            "--in",
+            "--out",
+            "--format",
+            "--quality",
+            "--tga-bits",
+            "--dpx-bits",
+            "--dds-format",
+            "--dds-mipmaps",
+            "--dds-texture",
+            "--dds-color",
+            "--dds-quality",
+        ],
         bare: &["--in-place", "--tiff-layers"],
         run: batch,
     },
@@ -219,6 +258,23 @@ fn export_opts(a: &Args) -> Result<ExportOptions, String> {
         o.encode.dpx_bits =
             Some(b.parse().ok().and_then(photocraft_io::DpxBits::from_bits).ok_or_else(|| format!("bad --dpx-bits `{b}`: expected 8, 10, 12 or 16"))?);
     }
+    for (flag, target) in [
+        ("--dds-format", &mut o.encode.dds.format),
+        ("--dds-mipmaps", &mut o.encode.dds.mipmaps),
+        ("--dds-texture", &mut o.encode.dds.structure),
+        ("--dds-quality", &mut o.encode.dds.quality),
+    ] {
+        if let Some(value) = a.get(flag) {
+            *target = value.to_string();
+        }
+    }
+    o.encode.dds.srgb = match a.get("--dds-color") {
+        None | Some("auto") => None,
+        Some("srgb") => Some(true),
+        Some("linear") => Some(false),
+        Some(value) => return Err(format!("bad --dds-color `{value}`; choose auto, srgb or linear")),
+    };
+    o.encode.dds.validate().map_err(|e| e.to_string())?;
     Ok(o)
 }
 

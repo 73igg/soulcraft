@@ -417,6 +417,13 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
             Ok(json!({"dialog": dialog, "info": crate::gpu_status::system_info_json(app)}))
         }
         "file.export.exportAs" => Ok(json!({"dialog": crate::export_dialog::open(app)?})),
+        "file.export.dds" if params.as_object().is_none_or(|o| o.is_empty()) => {
+            let id = crate::export_dialog::open(app)?;
+            if let Some(dialog) = app.ui.dialogs.iter_mut().find(|d| d.id == id) {
+                dialog.fields.insert("format".into(), json!("dds"));
+            }
+            Ok(json!({"dialog": id}))
+        }
         "file.export.quickExportAsPng" => crate::export_dialog::quick_export_png(app),
         // Layer › Export As… / Quick Export as PNG: the export pipeline on just the active layer.
         l if matches!(l, "layer.exportAs" | "layer.quickExportAsPng") && params.as_object().is_none_or(|o| o.is_empty()) => {

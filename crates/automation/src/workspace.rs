@@ -257,6 +257,7 @@ pub fn authorize_engine_command(id: &str, params: &Value) -> Result<(), Automati
             | "file.scripts.flattenAllMasks"
             | "file.scripts.deleteAllEmptyLayers"
             | "file.export.exportPreferences"
+            | "file.dds.inspect"
     );
     if id.starts_with("file.") && !safe_file_command {
         return Err(command_error(id));
@@ -296,6 +297,11 @@ pub fn authorize_engine_command(id: &str, params: &Value) -> Result<(), Automati
 /// when their request parameters contain no path. Fresh headless sessions
 /// cannot acquire such settings through the automation interface.
 pub fn authorize_desktop_engine_command(id: &str, params: &Value) -> Result<(), AutomationError> {
+    // Opening the DDS options is view state only. Explicit filesystem exports
+    // still require the normal capability-scoped document writer.
+    if id == "file.export.dds" && (params.is_null() || params.as_object().is_some_and(|p| p.is_empty())) {
+        return Ok(());
+    }
     authorize_engine_command(id, params)?;
     if id.starts_with("image.mode.") {
         return Err(command_error(id));
@@ -677,6 +683,9 @@ mod tests {
 
     #[test]
     fn filesystem_commands_fail_closed() {
+        assert!(authorize_desktop_engine_command("file.export.dds", &serde_json::json!({})).is_ok());
+        assert!(authorize_desktop_engine_command("file.export.dds", &serde_json::json!({"path":"outside.dds"})).is_err());
+        assert!(authorize_engine_command("file.export.dds", &serde_json::json!({})).is_err());
         for id in [
             "file.open",
             "file.openAs",

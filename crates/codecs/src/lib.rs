@@ -14,6 +14,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 mod codecs;
+pub mod dds;
 mod error;
 pub mod exif_color;
 mod fidelity;
@@ -43,7 +44,7 @@ pub use crate::resolution::{exif_resolution, export_exif, export_xmp, photoshop_
 pub use crate::source_settings::{WebpEncoding, jpeg_quality, webp_encoding};
 pub use half::f16;
 
-use crate::codecs::{dds, dpx, exr, fits, heif, jpeg, pcx, png, pnm, tiff, via_image, webp, xpm};
+use crate::codecs::{dpx, exr, fits, heif, jpeg, pcx, png, pnm, tiff, via_image, webp, xpm};
 
 /// Detect the format and decode with default [`Limits`].
 pub fn decode(bytes: &[u8]) -> Result<Image, CodecError> {
@@ -228,7 +229,7 @@ pub fn encode(image: &Image, format: Format, opts: &EncodeOptions) -> Result<Vec
         Format::Pnm => pnm::encode(image, plan, opts),
         Format::Pcx => Err(CodecError::unsupported(format, "PCX is import-only; save as PNG instead")),
         Format::Xpm => Err(CodecError::unsupported(format, "XPM is import-only; save as PNG instead")),
-        Format::Dds => Err(CodecError::unsupported(format, "DDS is import-only; save as PNG instead")),
+        Format::Dds => dds::encode(image, &opts.dds),
         Format::Fits => fits::encode(image, plan, opts),
         Format::Dpx => dpx::encode(image, plan, opts),
         Format::OpenExr => exr::encode(image, plan, opts),

@@ -233,6 +233,7 @@ pub(crate) fn doc_m(d: &Document, sink: &mut dyn Sink) -> DocM {
         ruler_origin: d.ruler_origin,
         selection: d.selection.as_ref().map(|s| surface_m(s, sink)),
         metadata: MetadataM {
+            dds: d.metadata.dds.as_ref().map(|dds| DdsSourceM { bytes: sink.blob(&dds.bytes), layers: dds.layers.iter().map(|id| id.0).collect() }),
             xmp: d.metadata.xmp.clone(),
             exif: opt_blob(&d.metadata.exif, sink),
             text: d.metadata.text.clone(),
@@ -574,7 +575,19 @@ impl Loader<'_> {
             channels.push(self.channel(c)?);
         }
         let quick_mask = m.quick_mask.as_ref().map(|c| self.channel(c)).transpose()?;
+        let dds = m
+            .metadata
+            .dds
+            .as_ref()
+            .map(|dds| -> Result<photocraft_doc::DdsSource> {
+                Ok(photocraft_doc::DdsSource {
+                    bytes: self.fetch.blob(&dds.bytes)?,
+                    layers: dds.layers.iter().map(|id| self.id_map.get(id).copied().unwrap_or(photocraft_doc::LayerId(0))).collect(),
+                })
+            })
+            .transpose()?;
         let mut md = Metadata {
+            dds,
             xmp: m.metadata.xmp.clone(),
             exif: self.opt_blob(&m.metadata.exif)?,
             text: m.metadata.text.clone(),

@@ -59,11 +59,12 @@ const WHITE: u16 = 0xffff;
 const INDICES_0123: [u8; 4] = [0x04, 0x0e, 0, 0];
 
 #[test]
-fn dds_is_readable_but_not_writable() {
+fn dds_is_readable_and_writable() {
     assert_eq!(from_extension("texture.DDS"), Some(Format::Dds));
-    assert!(caps(Format::Dds).read && !caps(Format::Dds).write);
+    assert!(caps(Format::Dds).read && caps(Format::Dds).write);
     let img = photocraft_codecs::Image::from_u8(1, 1, ChannelLayout::Rgba, vec![0, 0, 0, 0]).unwrap();
-    assert!(matches!(encode(&img, Format::Dds, &Default::default()), Err(CodecError::Unsupported { .. })));
+    let bytes = encode(&img, Format::Dds, &Default::default()).unwrap();
+    assert_eq!(decode(&bytes).unwrap().data(), img.data());
 }
 
 #[test]
@@ -197,27 +198,22 @@ fn only_the_top_mip_level_is_read() {
 }
 
 #[test]
-fn refuses_cubemaps_arrays_and_volumes() {
-    let unsupported = |b: &[u8], what: &str| match decode_as(Format::Dds, b) {
-        Err(CodecError::Unsupported { reason, .. }) => assert!(reason.contains(what), "{reason}"),
-        other => panic!("{what}: {other:?}"),
-    };
+fn opens_complete_cubemaps_arrays_and_volumes() {
     let mut cube = compressed(4, 4, b"DXT1");
-    cube[112..116].copy_from_slice(&0xfe00u32.to_le_bytes()); // DDSCAPS2_CUBEMAP and all faces
+    cube[112..116].copy_from_slice(&0xfe00u32.to_le_bytes());
     cube.extend([0; 8 * 6]);
-    unsupported(&cube, "cubemap");
+    assert!(decode_as(Format::Dds, &cube).is_ok());
+    let mut array = dx10(4, 4, 71, 3, 0, 6);
+    array.extend([0; 8 * 6]);
+    assert!(decode_as(Format::Dds, &array).is_ok());
     let mut volume = compressed(4, 4, b"DXT1");
-    volume[8..12].copy_from_slice(&(0x1007u32 | 0x80_0000).to_le_bytes()); // DDSD_DEPTH
+    volume[8..12].copy_from_slice(&(0x1007u32 | 0x80_0000).to_le_bytes());
     volume[24..28].copy_from_slice(&4u32.to_le_bytes());
-    volume[112..116].copy_from_slice(&0x20_0000u32.to_le_bytes()); // DDSCAPS2_VOLUME
+    volume[112..116].copy_from_slice(&0x20_0000u32.to_le_bytes());
     volume.extend([0; 8 * 4]);
-    unsupported(&volume, "volume");
-    unsupported(&dx10(4, 4, 71, 3, 0x4, 1), "cubemap");
-    unsupported(&dx10(4, 4, 71, 3, 0, 6), "array");
-    unsupported(&dx10(4, 4, 71, 4, 0, 1), "2D");
-    unsupported(&dx10(4, 4, 98, 3, 0, 1), "98"); // BC7_UNORM
-    unsupported(&compressed(4, 4, b"ATI2"), "ATI2");
-    unsupported(&compressed(4, 4, b"DXT2"), "premultiplied");
+    assert!(decode_as(Format::Dds, &volume).is_ok());
+    // A declared texture must contain all its subresources.
+    assert!(decode_as(Format::Dds, &dx10(4, 4, 71, 3, 0, 6)).is_err());
 }
 
 #[test]
@@ -264,5 +260,5 @@ fn rejects_bogus_sizes_and_pixel_formats() {
     }
     let mut no_format = header(1, 1, 0, &[0; 4], 32, [0xff, 0xff00, 0xff_0000, 0]);
     no_format.extend([0; 4]);
-    assert!(matches!(decode_as(Format::Dds, &no_format), Err(CodecError::Unsupported { .. })));
+    assert!(decode_as(Format::Dds, &no_format).is_err());
 }

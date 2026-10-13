@@ -841,6 +841,9 @@ pub type PsdGlobalBlock = ([u8; 4], [u8; 4], Arc<Vec<u8>>);
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Metadata {
+    /// DDS container and the layer corresponding to each on-disk surface.
+    /// Kept in native projects so compressed blocks and texture shape survive.
+    pub dds: Option<DdsSource>,
     pub xmp: Option<String>,
     pub exif: Option<Arc<Vec<u8>>>,
     /// Free-form image text (PNG tEXt/zTXt/iTXt, TIFF ASCII tags), including duplicate keys.
@@ -850,6 +853,12 @@ pub struct Metadata {
     /// Raw PSD global additional-layer-info blocks: (signature, key, data),
     /// e.g. `lnk2` embedded smart-object files, `Patt` patterns, `Txt2`.
     pub psd_global_blocks: Vec<PsdGlobalBlock>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct DdsSource {
+    pub bytes: Arc<Vec<u8>>,
+    pub layers: Vec<LayerId>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

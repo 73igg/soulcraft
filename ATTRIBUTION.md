@@ -115,3 +115,15 @@ next to the files:
 | `corpus/pixls/` (7 files, 226 MB) | Real camera raws, one per decode path: Canon PowerShot SX50 HS (CR2 and its DNG conversion), Nikon D3 uncompressed NEF, Sony DSC-RX0 cRAW ARW, Panasonic DC-G9 high-res RW2, Olympus E-1 GRBG ORF, plus the E-5 packed ORF as the documented known-unsupported case. Per file (each CC0, per its database entry): [IMG_4059.CR2](https://raw.pixls.us/data/Canon/PowerShot%20SX50%20HS/IMG_4059.CR2), [CRW_4061.DNG](https://raw.pixls.us/data/Canon/PowerShot%20SX50%20HS/CRW_4061.DNG), [JD1_8203.NEF](https://raw.pixls.us/data/Nikon/D3/JD1_8203.NEF), [DSC00009.ARW](https://raw.pixls.us/data/Sony/DSC-RX0/DSC00009.ARW), [P1000475.RW2](https://raw.pixls.us/data/Panasonic/DC-G9/P1000475.RW2), [E_1__C106743_gredos.ORF](https://raw.pixls.us/data/Olympus/E-1/E_1__C106743_gredos.ORF), [_7061961_copy.ORF](https://raw.pixls.us/data/Olympus/E-5/_7061961_copy.ORF) | The photographers of the pixls.us raw samples database | [raw.pixls.us](https://raw.pixls.us) `data/`, fetched per [xtask/src/corpus_pins.rs](xtask/src/corpus_pins.rs) | CC0 / public domain, per file as linked |
 
 Files copied into `corpus/` by hand (tiff, exr, raw) must be MIT, BSD or CC0.
+
+## Custom DDS build additions
+
+The synthetic `crates/codecs/tests/fixtures/dds-premultiplied-srgb.dds` fixture is original solid-colour test data, processed with Microsoft's DirectXTex 2026.5.8.1 `texconv -pmalpha -f R8G8B8A8_UNORM_SRGB`. Its DX10 alpha-mode field explicitly declares the premultiplied payload. The test data is MIT OR Apache-2.0, like this project.
+
+| Path | Title | Author | Source | License |
+|---|---|---|---|---|
+| `crates/codecs/src/dds.rs` (dependency), `licenses/dds-0.2.0-LICENSE-*` | DDS header, decoder and encoder library 0.2.0 | image-rs / image-dds contributors | https://github.com/image-rs/image-dds | MIT OR Apache-2.0 |
+| `crates/codecs/src/dds.rs` (dependency), `licenses/oxideav-dds-0.0.6-LICENSE.txt` | BC6H encoder and BC3 decoder, OxideAV DDS 0.0.6 | OxideAV contributors | https://github.com/OxideAV/oxideav-dds | MIT |
+| `docs/images/photocraft-custom-dds-*.png` | Actual custom-build DDS editing and export screenshots | SoulCraft custom build; underlying public-domain artwork credited in `docs/images/SOURCES.md` | This repository | MIT OR Apache-2.0 for the UI; public-domain artwork |
+| `licenses/egui-default-*.txt` (embedded dependency font notices) | egui's bundled default fonts, used without the optional craft-fonts build input | Ubuntu, Hack, Noto and emoji-icon-font authors, credited in the included notices | [egui default fonts](https://github.com/emilk/egui/tree/0.36.2/crates/epaint_default_fonts/fonts) | Ubuntu Font Licence, SIL OFL, and MIT/BSD as specified in each notice |
+| Portable release `VCRUNTIME140.dll`, `licenses/Microsoft-VC-runtime-NOTICE.txt` | Unmodified x64 Visual C++ runtime dependency | Microsoft Corporation | Visual Studio 2022 `VC/Redist/MSVC` directory; [redistribution terms](https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution) | Microsoft Visual Studio redistributable code terms; separate from the source licence |

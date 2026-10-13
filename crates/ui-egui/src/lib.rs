@@ -248,6 +248,7 @@ pub type ImportFn = Box<dyn Fn(&str, &[u8], usize) -> Result<(Document, Vec<Stri
 /// Encoder settings chosen in Export As (the file format comes from the name's extension).
 #[derive(Clone, Debug, PartialEq)]
 pub struct ExportSettings {
+    pub dds: Option<photocraft_codecs::dds::DdsOptions>,
     /// JPEG quality 1–100 (None = codec default).
     pub jpeg_quality: Option<u8>,
     /// WebP: lossless (VP8L) rather than lossy (VP8 at [`Self::webp_quality`]).
@@ -274,6 +275,7 @@ pub struct ExportSettings {
 impl Default for ExportSettings {
     fn default() -> Self {
         ExportSettings {
+            dds: None,
             jpeg_quality: None,
             webp_lossless: true,
             webp_quality: None,

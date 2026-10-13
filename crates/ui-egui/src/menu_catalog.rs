@@ -19,6 +19,7 @@ pub static CATALOG: &[(&[&str], &str, Option<&str>, &str)] = &[
     (&["File"], "Revert", Some("F12"), "file.revert"),
     (&["File"], "---", None, "---"),
     (&["File", "Export"], "Quick Export as PNG", None, "file.export.quickExportAsPng"),
+    (&["File", "Export"], "Export DDS…", None, "file.export.dds"),
     (&["File", "Export"], "Export As…", Some("Cmd+Alt+Shift+W"), "file.export.exportAs"),
     (&["File", "Export"], "Export Preferences…", None, "file.export.exportPreferences"),
     (&["File", "Export"], "---", None, "---"),

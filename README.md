@@ -1,11 +1,52 @@
+<h1 align="center">SoulCraft - PhotoCraft Custom</h1>
+
 <p align="center">
-  <a href="https://getartcraft.com/">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="docs/brand/artcraft-logo-white.svg">
-      <img alt="ArtCraft" src="docs/brand/artcraft-logo.svg" width="200">
-    </picture>
-  </a>
+  <b>DDS texture editing, built on the current PhotoCraft 0.8.2 source.</b><br>
+  Open, edit and export game textures with legacy or DX10 headers,<br>
+  BC1-BC7 compression, HDR, mipmaps, cube maps, arrays and volumes.
 </p>
+
+<p align="center">
+  <a href="https://github.com/73igg/soulcraft/releases"><b>Download the Windows custom build</b></a> |
+  <a href="docs/dds.md">DDS guide and format coverage</a>
+</p>
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/images/photocraft-custom-dds-edit.png" alt="The custom editor opening a DDS texture with editable mip levels in the Layers panel" width="100%">
+      <br><sub>A real DDS texture open in the custom build, with its mip levels available as editable layers.</sub>
+      <h3>Open and edit the whole texture</h3>
+      Every mip, cube face, array item and volume slice is available as an ordinary editable layer. Brushes, selections, adjustments, masks and the rest of the editor work on decoded pixels. Saving preserves the original texture layout and keeps untouched compressed surfaces byte for byte.
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/images/photocraft-custom-dds-export.png" alt="DDS export controls for compression, mipmaps, texture layout, colour space and quality" width="100%">
+      <br><sub>The DDS export dialog in the running custom build.</sub>
+      <h3>Export for your engine</h3>
+      Choose BC1/DXT1, BC2/DXT3, BC3/DXT5, BC4/BC5 channel textures, signed or unsigned BC6H HDR, BC7, or uncompressed storage. Keep or regenerate mipmaps, choose an image, array, cube map or volume, and set the sRGB flag and compression quality.
+    </td>
+  </tr>
+</table>
+
+### Changes in this custom build
+
+- Upgraded the separate custom build from the installed 0.2.0 source to this fork's current 0.8.2 main branch, retaining its newer tools, formats, dialogs and background file operations.
+- Replaced limited DDS import with DDS import and export for compressed and uncompressed colour textures, including every subresource of 2D textures, cube maps, cube arrays, texture arrays and volume textures.
+- Added BC1-BC7 encoding and decoding, including signed BC4/BC5, signed and unsigned BC6H HDR, DXT2/DXT4 premultiplied alpha, RXGB and DXT5 normal-map export. Added 8/16-bit integer, half-float and 32-bit float storage choices.
+- Added **File > Export > Export DDS**, DDS in **Export As**, and a DDS **Save As** file filter. Export settings include storage, mipmaps, texture layout, colour signalling and quality, and are remembered between exports. The new menu label is translated in all 20 bundled language catalogs.
+- Preserved original DDS headers, subresource ordering and untouched compressed bytes when saving. Native `.pcraft` projects retain the source texture and remap its surface-layer references when reopened.
+- Added full mip-chain generation and mip removal, filtering sRGB colour in linear light and alpha with premultiplied colour. Volume mipmaps also reduce the depth correctly.
+- Kept texture and normal-map channel values intact instead of applying the generic colour conversion for formats without ICC profiles. Legacy channel-mask import remains available.
+- Corrected BC3 colour endpoint handling and alpha interpolation, checked against Microsoft's DirectXTex decoder. Added DX10 premultiplied-alpha handling, including correct sRGB filtering and storage in linear light.
+- Added CLI DDS options, the `file.export.dds` command, the `file.dds.inspect` query and DDS discovery in batch image folders.
+- Added bounds, allocation and truncation checks, graceful errors for unsupported settings or missing surfaces, and DDS codec, editor, project round-trip and export regression tests.
+- Gave the custom Windows app its own title, application identity and preferences directory; the portable build stores settings beside its executable. Kept the original installation separate.
+- Limited Cargo to two concurrent build jobs to keep local compilation resource use manageable.
+- Added this illustrated changelog, a DDS guide, updated format coverage and bundled third-party licence notices. Removed the upstream ArtCraft logo assets from this modified distribution.
+
+This is an independent custom build of PhotoCraft, published through the SoulCraft fork. The upstream project and its authors are credited below. [DDS guide](docs/dds.md) describes the exact supported texture formats and editing workflow.
+
+---
 
 <h1 align="center">PhotoCraft</h1>
 
@@ -426,7 +467,6 @@ Forks and modified versions must remove them.
 <sub>Adobe, Photoshop, Illustrator, Premiere Pro, Lightroom, Acrobat, After Effects and InDesign are trademarks or registered trademarks of Adobe Inc. in the United States and/or other countries. PhotoCraft is an independent, open-source project and is not affiliated with, sponsored by or endorsed by Adobe Inc.; these names are used only to describe the workflows it is compatible with.</sub>
 
 <p align="center">
-  <a href="https://getartcraft.com/"><img alt="ArtCraft" src="docs/brand/artcraft-mark.svg" width="28"></a><br>
   <sub>Made by the <a href="https://getartcraft.com/">ArtCraft</a> team and community.</sub>
 </p>
 

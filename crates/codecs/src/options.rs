@@ -157,6 +157,8 @@ impl DpxBits {
 /// Options for [`crate::encode`].
 #[derive(Debug, Clone)]
 pub struct EncodeOptions {
+    /// DDS storage, mipmaps, colour signalling and texture shape.
+    pub dds: crate::dds::DdsOptions,
     /// JPEG quality 1..=100 (also AVIF quality when enabled).
     pub jpeg_quality: u8,
     /// JPEG 4:2:0 chroma subsampling (`false` = 4:4:4).
@@ -185,6 +187,7 @@ pub struct EncodeOptions {
 impl Default for EncodeOptions {
     fn default() -> Self {
         EncodeOptions {
+            dds: crate::dds::DdsOptions::default(),
             jpeg_quality: 90,
             jpeg_chroma_subsampling: true,
             png_compression: PngCompression::Default,

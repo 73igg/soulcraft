@@ -158,6 +158,16 @@ pub(crate) fn plan(image: &Image, format: Format, opts: &EncodeOptions) -> Plan 
             layout: if layout == ChannelLayout::GrayA { ChannelLayout::Gray } else { pick_layout(layout, c.layouts, c.alpha) },
             sample: crate::codecs::dpx::plan_sample(opts.dpx_bits, sample),
         },
+        Format::Dds if opts.dds.format != "auto" => {
+            let storage = crate::dds::pixel_format(&opts.dds.format).unwrap_or_else(|_| crate::dds::automatic_format(image));
+            let target = match storage.precision() {
+                ::dds::Precision::U8 => SampleType::U8,
+                ::dds::Precision::U16 => SampleType::U16,
+                _ => SampleType::F32,
+            };
+            let alpha = matches!(storage.channels(), ::dds::Channels::Rgba | ::dds::Channels::Alpha);
+            Plan { layout: pick_layout(layout, &[ChannelLayout::Gray, ChannelLayout::Rgb, ChannelLayout::Rgba], alpha), sample: target }
+        }
         _ => Plan { layout: pick_layout(layout, c.layouts, c.alpha), sample: pick_sample(sample, c.depths) },
     }
 }
@@ -216,7 +226,12 @@ pub fn fidelity_warnings_with(image: &Image, format: Format, opts: &EncodeOption
     // Compression
     if format == Format::Gif {
         w.push(W::PaletteQuantized);
-    } else if c.lossy || (format == Format::WebP && !opts.webp_lossless) {
+    } else if c.lossy
+        || (format == Format::WebP && !opts.webp_lossless)
+        || (format == Format::Dds
+            && opts.dds.format != "auto"
+            && crate::dds::pixel_format(&opts.dds.format).is_ok_and(|f| matches!(::dds::PixelInfo::from(f), ::dds::PixelInfo::Block(_))))
+    {
         w.push(W::LossyCompression);
     }
 

@@ -13,7 +13,7 @@ use crate::state::DialogKind;
 use crate::theme::Tokens;
 use crate::{ExportSettings, PhotocraftApp};
 
-const FORMATS: [(&str, &str); 6] = [("png", "PNG"), ("jpg", "JPG"), ("webp", "WebP"), ("tif", "TIFF"), ("tga", "TGA"), ("ico", "ICO")];
+const FORMATS: [(&str, &str); 7] = [("png", "PNG"), ("jpg", "JPG"), ("webp", "WebP"), ("tif", "TIFF"), ("tga", "TGA"), ("ico", "ICO"), ("dds", "DDS Texture")];
 
 /// Preferences ▸ remembered dialog settings: Export As writes the settings it was used with
 /// last under its command id and seeds the next dialog from them, as Fill, Liquify and the
@@ -33,6 +33,11 @@ fn seed_remembered(app: &PhotocraftApp, f: &mut Map<String, Value>) {
     if let Some(v) = saved.get("scale").and_then(Value::as_f64).filter(|v| (1.0..=1000.0).contains(v)) {
         f.insert("scale".into(), json!(v));
     }
+    for key in ["ddsFormat", "ddsMipmaps", "ddsTexture", "ddsColor", "ddsQuality"] {
+        if let Some(v) = saved.get(key).and_then(Value::as_str) {
+            f.insert(key.into(), json!(v));
+        }
+    }
     for key in ["lossless", "transparency"] {
         if let Some(v) = saved.get(key).and_then(Value::as_bool) {
             f.insert(key.into(), json!(v));
@@ -48,7 +53,8 @@ fn seed_remembered(app: &PhotocraftApp, f: &mut Map<String, Value>) {
 
 /// Record the settings for the next Export As (see [`seed_remembered`]).
 fn remember(app: &mut PhotocraftApp, f: &Map<String, Value>) {
-    const KEYS: [&str; 7] = ["format", "quality", "lossless", "transparency", "scale", "metadata", "tgaBits"];
+    const KEYS: [&str; 12] =
+        ["format", "quality", "lossless", "transparency", "scale", "metadata", "tgaBits", "ddsFormat", "ddsMipmaps", "ddsTexture", "ddsColor", "ddsQuality"];
     let saved: Map<String, Value> = KEYS.iter().filter_map(|k| f.get(*k).map(|v| ((*k).to_string(), v.clone()))).collect();
     app.session.prefs.edit(|p| {
         p.dialogs.insert(COMMAND.into(), Value::Object(saved));
@@ -230,7 +236,7 @@ fn export_document(doc: &Document, f: &Map<String, Value>, max_side: Option<u32>
             .map_err(|e| e.to_string())?;
     }
     let fmt = s_fmt(f);
-    if !f.get("transparency").and_then(Value::as_bool).unwrap_or(true) || fmt == "jpg" {
+    if (fmt != "dds" && !f.get("transparency").and_then(Value::as_bool).unwrap_or(true)) || fmt == "jpg" {
         s.execute("layer.flattenImage", json!({})).map_err(|e| e.to_string())?;
     }
     s.active().map(|d| (*d.doc).clone()).ok_or_else(|| "export failed".into())
@@ -277,6 +283,7 @@ fn settings(f: &Map<String, Value>) -> ExportSettings {
     let fmt = s_fmt(f);
     let quality = n(f, "quality", 85.0).clamp(1.0, 100.0) as u8;
     ExportSettings {
+        dds: (fmt == "dds").then(|| dds_settings(f)),
         jpeg_quality: (fmt == "jpg").then_some(quality),
         webp_lossless: fmt != "webp" || lossless(f),
         webp_quality: (fmt == "webp" && !lossless(f)).then_some(quality),
@@ -302,7 +309,12 @@ fn scaled_estimate(bytes: usize, doc: &Document, proxy: &Document, f: &Map<Strin
 /// Estimated size (bytes) from the already prepared proxy encode, scaled by pixel count.
 fn estimate(app: &PhotocraftApp, doc: &Document, proxy: &Document, f: &Map<String, Value>) -> Option<u64> {
     let export = app.services.export.as_ref()?;
-    let (bytes, _) = export(proxy, &format!("estimate.{}", s_fmt(f)), &settings(f)).ok()?;
+    let mut settings = settings(f);
+    if let Some(dds) = &mut settings.dds {
+        dds.structure = "image".into();
+        dds.quality = "fast".into();
+    }
+    let (bytes, _) = export(proxy, &format!("estimate.{}", s_fmt(f)), &settings).ok()?;
     Some(scaled_estimate(bytes.len(), doc, proxy, f))
 }
 
@@ -408,6 +420,11 @@ fn poll_or_start_preview(
 fn estimate_native(doc: &Document, proxy: &Document, f: &Map<String, Value>) -> Option<u64> {
     let settings = settings(f);
     let mut options = photocraft_io::ExportOptions::default();
+    if let Some(dds) = &settings.dds {
+        options.encode.dds = dds.clone();
+        options.encode.dds.structure = "image".into();
+        options.encode.dds.quality = "fast".into();
+    }
     if let Some(quality) = settings.jpeg_quality {
         options.encode.jpeg_quality = quality;
     }
@@ -441,6 +458,9 @@ pub fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String, Valu
                 }
             });
             let fmt = s_fmt(f);
+            if fmt == "dds" {
+                dds_fields(ui, f);
+            }
             if fmt == "webp" {
                 let mut ll = lossless(f);
                 crate::widgets::checkbox(ui, &mut ll, tl!("Lossless"));
@@ -462,7 +482,7 @@ pub fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String, Valu
                     }
                 });
             }
-            if fmt != "jpg" {
+            if fmt != "jpg" && fmt != "dds" {
                 let mut tr = f.get("transparency").and_then(Value::as_bool).unwrap_or(true);
                 crate::widgets::checkbox(ui, &mut tr, tl!("Transparency"));
                 f.insert("transparency".into(), json!(tr));
@@ -495,16 +515,7 @@ pub fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String, Valu
         ui.vertical(|ui| {
             let layer = f.get("__layer").and_then(Value::as_u64);
             let key = egui::Id::new(("export-preview", doc.id.0, app.session.active().map_or(0, |s| s.revision), layer));
-            let sig = format!(
-                "{}{}{}{}{}{}{}",
-                s_fmt(f),
-                n(f, "quality", 85.0),
-                lossless(f),
-                f.get("transparency").map(|v| v.to_string()).unwrap_or_default(),
-                n(f, "scale", 100.0),
-                s(f, "metadata"),
-                s(f, "tgaBits")
-            );
+            let sig = serde_json::to_string(f).unwrap_or_default();
             let cached: Option<CachedPreview> = ui.data(|d| d.get_temp(key));
             let preview = match cached.filter(|cached| cached.signature == sig) {
                 Some(cached) => Some(cached),
@@ -542,6 +553,65 @@ pub fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String, Valu
             ui.label(egui::RichText::new(format!("{}  ≈ {est}", s_fmt(f).to_uppercase())).color(t.text_dim).size(11.5));
         });
     });
+}
+
+fn dds_settings(f: &Map<String, Value>) -> photocraft_codecs::dds::DdsOptions {
+    let mut dds = photocraft_codecs::dds::DdsOptions::default();
+    for (key, target) in
+        [("ddsFormat", &mut dds.format), ("ddsMipmaps", &mut dds.mipmaps), ("ddsTexture", &mut dds.structure), ("ddsQuality", &mut dds.quality)]
+    {
+        if let Some(value) = f.get(key).and_then(Value::as_str) {
+            *target = value.to_string();
+        }
+    }
+    dds.srgb = match f.get("ddsColor").and_then(Value::as_str) {
+        Some("srgb") => Some(true),
+        Some("linear") => Some(false),
+        _ => None,
+    };
+    dds
+}
+
+fn dds_choice(ui: &mut egui::Ui, f: &mut Map<String, Value>, key: &str, label: &str, default: &str, choices: &[(&str, &str)]) {
+    ui.label(label);
+    let mut value = f.get(key).and_then(Value::as_str).unwrap_or(default).to_string();
+    let options: Vec<(String, &str)> = choices.iter().map(|(key, label)| (key.to_string(), *label)).collect();
+    if crate::widgets::dropdown(ui, key, &mut value, &options, 210.0) {
+        f.insert(key.into(), json!(value));
+    }
+}
+
+fn dds_fields(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
+    dds_choice(ui, f, "ddsFormat", "Compression / storage", "auto", photocraft_codecs::dds::EXPORT_FORMATS);
+    dds_choice(ui, f, "ddsMipmaps", "Mipmaps", "preserve", &[("preserve", "Keep existing"), ("generate", "Generate full chain"), ("none", "No mipmaps")]);
+    dds_choice(
+        ui,
+        f,
+        "ddsTexture",
+        "Texture",
+        "preserve",
+        &[
+            ("preserve", "Keep original layout"),
+            ("image", "Image (visible composite)"),
+            ("array", "Texture array (layers)"),
+            ("cube", "Cube map (6 faces per cube)"),
+            ("volume", "Volume (depth slices)"),
+        ],
+    );
+    dds_choice(
+        ui,
+        f,
+        "ddsColor",
+        "Colour space",
+        "auto",
+        &[("auto", "Automatic / original"), ("srgb", "sRGB (colour textures)"), ("linear", "Linear (data / normal maps)")],
+    );
+    if matches!(f.get("ddsFormat").and_then(Value::as_str), Some("bc6h" | "bc6hs")) {
+        ui.label("BC6H uses a fixed HDR compression search.");
+    } else {
+        dds_choice(ui, f, "ddsQuality", "BC1-BC5 / BC7 quality", "normal", &[("fast", "Fast"), ("normal", "Normal"), ("high", "High")]);
+    }
+    ui.label(egui::RichText::new("Cube faces: +X, -X, +Y, -Y, +Z, -Z, from top to bottom. BC5 stores red and green; BC6H stores HDR RGB.").size(11.0));
 }
 
 /// Export with the dialog's settings: choose a path, render, encode, write.
@@ -642,6 +712,54 @@ fn quick_export(app: &mut PhotocraftApp, p: Value) -> Result<Value, String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn dds_dialog_exports_selected_storage_and_restores_settings() {
+        use std::{cell::RefCell, rc::Rc};
+        let written = Rc::new(RefCell::new(Vec::new()));
+        let output = written.clone();
+        let services = crate::Services {
+            file_dialog: Some(Box::new(|request, _, reply| {
+                assert!(matches!(request, crate::FileDialogRequest::Save { suggested } if suggested.ends_with(".dds")));
+                reply.send(Some(crate::FileDialogAnswer::SaveTo("texture.dds".into())));
+            })),
+            export: Some(Box::new(|doc, _, settings| {
+                let mut opts = photocraft_io::ExportOptions::default();
+                opts.encode.dds = settings.dds.clone().expect("DDS settings reached exporter");
+                let result = photocraft_io::export(doc, "dds", &opts).map_err(|e| e.to_string())?;
+                Ok((result.bytes, result.warnings))
+            })),
+            write: Some(Box::new(move |_, bytes| {
+                *output.borrow_mut() = bytes.to_vec();
+                Ok(())
+            })),
+            ..Default::default()
+        };
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), services);
+        app.run("file.new", json!({"width": 8, "height": 8})).unwrap();
+        let id = open(&mut app).unwrap();
+        let f = &mut app.ui.dialog_mut(id).unwrap().fields;
+        for (key, value) in
+            [("format", "dds"), ("ddsFormat", "bc7"), ("ddsMipmaps", "generate"), ("ddsTexture", "image"), ("ddsColor", "srgb"), ("ddsQuality", "fast")]
+        {
+            f.insert(key.into(), json!(value));
+        }
+        let f = f.clone();
+        confirm(&mut app, &f).unwrap();
+        app.poll_file_dialog(&egui::Context::default(), None);
+        // Lossy BC7 export legitimately shows fidelity warnings in the status area.
+        assert!(app.ui.status.starts_with("Exported texture.dds"), "{}", app.ui.status);
+        let bytes = written.borrow();
+        let (header, format, surfaces) = photocraft_codecs::dds::inspect(&bytes).unwrap();
+        assert_eq!(format, photocraft_codecs::dds::PixelFormat::BC7_UNORM);
+        assert!(header.is_srgb());
+        assert_eq!(surfaces.len(), 4);
+        let id = open(&mut app).unwrap();
+        let remembered = &app.ui.dialog_mut(id).unwrap().fields;
+        for key in ["format", "ddsFormat", "ddsMipmaps", "ddsTexture", "ddsColor", "ddsQuality"] {
+            assert_eq!(remembered[key], f[key]);
+        }
+    }
+
     #[test]
     fn ico_export_is_available_and_rejects_oversize_output() {
         let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());

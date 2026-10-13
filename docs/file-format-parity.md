@@ -1,6 +1,6 @@
 # File-format parity
 
-> **Last reviewed:** 2026-10-12 · **Last updated:** 2026-10-13 · **Change:** minor (palette PNGs open in Indexed Color mode, #4804; earlier: CMYK Invert, Posterize and Threshold on the inks; 16-bit Lab Invert; Photoshop-oracle floor 145/258; `.atn` import maps 112 events; DDS textures open, #1327; DPX read and write, #1049; #2465 fixed: CS2 placed layers with only a `PlLd` block open their contents; Photoshop Actions `.atn` read and write; `.shc` contour files read and write; earlier the same day: indexed BMP palette mode; Save keeps a JPEG's quality and a WebP's encoding) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-13 | **Last updated:** 2026-10-13 | **Change:** major custom-build addition (DDS import/export, BC1-BC7, HDR, mipmaps, arrays, cubes and volumes; see [DDS coverage](dds.md)) | **Target:** Adobe Photoshop 2026
 
 Every format Photoshop 2026 (27.11.0) reads or writes, with PhotoCraft's support, fidelity and
 tests. Photoshop's list comes from its `Info.plist` `CFBundleDocumentTypes`, the PiPL read/write
@@ -90,7 +90,7 @@ D5100 colour profile. Counts and the G14 estimate are unchanged.
 | Paint.NET `.pdn` | yes | no | [pdn.md](pdn.md) |
 | OpenRaster `.ora` | yes | yes | [ora.md](ora.md) |
 | ICO, QOI | yes | yes | |
-| DirectDraw Surface `.dds` | yes | no | Top mip level of a 2D texture: uncompressed RGB, RGBA or luminance, BC1–BC3 (DXT1/3/5), legacy or DX10 header. Cubemaps, arrays, volumes and BC4–BC7 are refused (#1327). Photoshop needs a plug-in |
+| DirectDraw Surface `.dds` | yes | yes | Custom DDS build: BC1?BC7, signed channels and BC6H HDR, legacy/DX10 colour storage, editable mips/cubes/arrays/volumes, original layout and native-project preservation. See [DDS guide](dds.md) |
 | Krita `.kra`, GIMP `.xcf`, Procreate | no | no | Not in Photoshop either |
 
 ### Affinity import notes (moved from `roadmap.md`)
@@ -142,6 +142,7 @@ remaining gaps in #1606 stay tracked with per-sample corpus ceilings.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-13 | major | Custom DDS import, editing and export; mipmaps, cubes, arrays, volumes, BC1?BC7/HDR and original-layout/project preservation |
 | 2026-10-13 | minor | Palette PNGs open in Indexed Color mode (#4804) |
 | 2026-10-12 | minor | `.atn`: 112 events mapped (Select and Mask, Filter Gallery Spatter, Ripple, Crystallize, Pattern Fill layers, mask targeting, Step Backward, points, Bitmap) |
 | 2026-10-12 | minor | DDS textures open, read-only (#1327) |

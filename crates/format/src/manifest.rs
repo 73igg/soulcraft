@@ -357,6 +357,8 @@ fn default_channel_opacity() -> f32 {
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct MetadataM {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dds: Option<DdsSourceM>,
     pub xmp: Option<String>,
     pub exif: Option<Hash>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -365,6 +367,12 @@ pub struct MetadataM {
     pub psd_resources: Vec<(u16, String, Hash)>,
     /// (signature hex, key hex, blob)
     pub psd_global_blocks: Vec<(String, String, Hash)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DdsSourceM {
+    pub bytes: Hash,
+    pub layers: Vec<u64>,
 }
 
 #[cfg(test)]

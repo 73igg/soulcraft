@@ -19,3 +19,5 @@ Screenshots must use famous public-domain artwork (or content made in the app), 
 | File | Content | Source / licence |
 |---|---|---|
 | `assets/dict/en_US-scowl-50.txt.gz` | English word list (72,403 words, American spelling) for Edit › Check Spelling | [SCOWL](http://wordlist.aspell.net/) 2020.12.07, size 50, by Kevin Atkinson: permissive licence (use, copy, modify, distribute and sell, keeping the notice); full text and build recipe in `assets/dict/LICENSE-SCOWL.txt`. |
+
+| `photocraft-custom-dds-edit.png`, `photocraft-custom-dds-export.png` | Native PhotoCraft Custom screenshots with a BC7 DDS and editable mip levels, and the DDS export controls | Artwork: public domain, Hokusai, c. 1831, [The Great Wave off Kanagawa](https://commons.wikimedia.org/wiki/File:The_Great_Wave_off_Kanagawa.jpg). UI: this project, MIT OR Apache-2.0. |

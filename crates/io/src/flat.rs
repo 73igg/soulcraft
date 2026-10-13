@@ -546,7 +546,7 @@ pub(crate) fn export_flat_with(doc: &Document, format: Format, opts: &ExportOpti
         } else if let Some(linear) = convert_gray(&img, photocraft_cms::builtin::linear_gray(), CSample::F32)? {
             img = linear;
         }
-    } else if !format.caps().icc {
+    } else if !format.caps().icc && format != Format::Dds {
         // Untagged files read back as sRGB/sGray: convert to it (as Quick Export does) rather than
         // write values that only mean something under the dropped profile.
         if let Some(srgb) = convert_rgb(&img, Builtin::Srgb.profile(), Intent::Perceptual, true, img.sample_type())? {

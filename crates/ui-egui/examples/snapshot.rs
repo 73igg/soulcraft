@@ -46,6 +46,9 @@ fn main() {
         })),
         export: Some(Box::new(|doc: &photocraft_doc::Document, path: &str, settings: &photocraft_ui_egui::ExportSettings| {
             let mut opts = photocraft_io::ExportOptions::default();
+            if let Some(dds) = &settings.dds {
+                opts.encode.dds = dds.clone();
+            }
             if let Some(q) = settings.jpeg_quality {
                 opts.encode.jpeg_quality = q;
             }

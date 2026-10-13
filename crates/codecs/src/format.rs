@@ -70,10 +70,6 @@ pub const ASYMMETRIC_EXCEPTIONS: &[(Format, &str)] = &[
         "PCX is supported for opening legacy paint and clipart assets. New files should use PNG; writing obsolete indexed and planar variants is intentionally not provided.",
     ),
     (
-        Format::Dds,
-        "DDS is supported for opening game and 3D textures. Writing one well means choosing a block compression and generating mip levels, which belongs in a texture export, not Save As.",
-    ),
-    (
         Format::Avif,
         "AVIF encode uses ravif (pure Rust) but decoding requires dav1d (C); read stays unsupported \
          until a pure-Rust AV1 decoder is viable. Only enabled with the non-default `avif` feature.",
@@ -242,7 +238,7 @@ pub fn caps(format: Format) -> FormatCaps {
         Format::Pnm => FormatCaps { depths: &[S::U8, S::U16, S::F32], layouts: ALL_LAYOUTS, ..base },
         Format::Pcx => FormatCaps { read: true, write: false, layouts: &[L::Rgb], alpha: false, ..base },
         Format::Xpm => FormatCaps { read: true, write: false, layouts: &[L::Rgba], ..base },
-        Format::Dds => FormatCaps { read: true, write: false, layouts: RGB_GRAY, ..base },
+        Format::Dds => FormatCaps { depths: &[S::U8, S::U16, S::F16, S::F32], layouts: &[L::Gray, L::Rgba], ..base },
         Format::Qoi => base,
         Format::OpenExr => FormatCaps { depths: &[S::F16, S::F32], layouts: RGB_GRAY, ..base },
         Format::Hdr => FormatCaps { depths: &[S::F32], layouts: &[L::Rgb], alpha: false, lossy: true, ..base },

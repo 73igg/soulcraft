@@ -85,12 +85,12 @@ pub fn resolve(env: impl Fn(&str) -> Option<OsString>, exe_dir: Option<&Path>) -
 pub fn platform_dir(env: &impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
     let home = env("HOME").filter(|h| !h.is_empty()).map(PathBuf::from);
     if cfg!(target_os = "macos") {
-        return home.map(|h| h.join("Library/Application Support/Photocraft"));
+        return home.map(|h| h.join("Library/Application Support/Photocraft Custom"));
     }
     if cfg!(windows) {
-        return env("APPDATA").filter(|a| !a.is_empty()).map(|a| PathBuf::from(a).join("Photocraft"));
+        return env("APPDATA").filter(|a| !a.is_empty()).map(|a| PathBuf::from(a).join("Photocraft Custom"));
     }
-    env("XDG_CONFIG_HOME").filter(|x| !x.is_empty()).map(PathBuf::from).or_else(|| home.map(|h| h.join(".config"))).map(|c| c.join("photocraft"))
+    env("XDG_CONFIG_HOME").filter(|x| !x.is_empty()).map(PathBuf::from).or_else(|| home.map(|h| h.join(".config"))).map(|c| c.join("photocraft-custom"))
 }
 
 /// The first portable marker file in `exe_dir`, if any.
@@ -149,9 +149,9 @@ mod tests {
         assert!(!exe.join(PORTABLE_DATA_DIR).exists(), "no portable folder without a marker");
         // The convention per platform.
         if cfg!(target_os = "macos") {
-            assert_eq!(dir, root.join("home/Library/Application Support/Photocraft"));
+            assert_eq!(dir, root.join("home/Library/Application Support/Photocraft Custom"));
         } else if cfg!(windows) {
-            assert_eq!(dir, root.join("appdata").join("Photocraft"));
+            assert_eq!(dir, root.join("appdata").join("Photocraft Custom"));
         } else {
             assert_eq!(dir, root.join("home/.config/photocraft"));
         }
