@@ -4,6 +4,33 @@ use photocraft_geom::Rect;
 use photocraft_io::{self as io, ExportOptions};
 use photocraft_raster::Surface;
 
+#[test]
+fn automatic_srgb_includes_premultiplied_storage_in_every_texture_layout() {
+    for format in ["dxt2", "dxt4"] {
+        for (kind, count) in [("image", 1), ("array", 2), ("cube", 6), ("volume", 2)] {
+            let mut doc = Document::new("Premultiplied", Size::new(4, 4), ColorMode::Rgb, photocraft_doc::SampleType::U8);
+            doc.icc_profile = Some(photocraft_cms::Builtin::Srgb.profile().to_bytes());
+            for i in 0..count {
+                let mut surface = Surface::new(doc.pixel_format());
+                surface.write_region(doc.bounds(), &[0.25, 0.5, 0.75, 0.5].repeat(16));
+                doc.layers.push(Layer::new(format!("Surface {i}"), LayerContent::Raster(surface)));
+            }
+            let mut opts = ExportOptions::default();
+            opts.encode.dds.format = format.into();
+            opts.encode.dds.structure = kind.into();
+            let bytes = io::export(&doc, "out.dds", &opts).unwrap().bytes;
+            let (header, _, surfaces) = dds::inspect(&bytes).unwrap();
+            assert!(header.is_srgb(), "{format} {kind}");
+            assert_eq!(header.alpha_mode(), dds::Header::new_image(4, 4, dds::pixel_format(format).unwrap()).alpha_mode());
+            assert_eq!(surfaces.len(), count);
+            let decoded = photocraft_codecs::decode(&bytes).unwrap().to_normalized();
+            for (actual, expected) in decoded[..4].iter().zip([0.25, 0.5, 0.75, 0.5]) {
+                assert!((*actual - expected).abs() < 0.06, "{format} {kind}: {decoded:?}");
+            }
+        }
+    }
+}
+
 fn texture(kind: &str, count: usize) -> Vec<u8> {
     let mut doc = Document::new("DDS test", Size::new(8, 8), ColorMode::Rgb, photocraft_doc::SampleType::U8);
     for i in 0..count {

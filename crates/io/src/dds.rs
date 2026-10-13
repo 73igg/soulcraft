@@ -167,6 +167,8 @@ fn supports_srgb(format: PixelFormat) -> bool {
         PixelFormat::BC1_UNORM
             | PixelFormat::BC2_UNORM
             | PixelFormat::BC3_UNORM
+            | PixelFormat::BC2_UNORM_PREMULTIPLIED_ALPHA
+            | PixelFormat::BC3_UNORM_PREMULTIPLIED_ALPHA
             | PixelFormat::BC7_UNORM
             | PixelFormat::R8G8B8A8_UNORM
             | PixelFormat::B8G8R8A8_UNORM
