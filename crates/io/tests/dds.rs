@@ -158,7 +158,7 @@ fn mip_regeneration_updates_all_levels_and_none_removes_them() {
 
 #[test]
 fn plain_image_export_composites_editing_layers() {
-    let original = Image::from_u8(4, 4, ChannelLayout::Rgba, vec![255, 0, 0, 255].repeat(16)).unwrap();
+    let original = Image::from_u8(4, 4, ChannelLayout::Rgba, [255, 0, 0, 255].repeat(16)).unwrap();
     let bytes = photocraft_codecs::encode(&original, photocraft_codecs::Format::Dds, &Default::default()).unwrap();
     let mut doc = io::import("test.dds", &bytes).unwrap().document;
     let mut surface = Surface::new(doc.pixel_format());
