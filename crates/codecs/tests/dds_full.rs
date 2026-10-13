@@ -106,7 +106,7 @@ fn signed_channel_textures_preserve_negative_samples() {
 
 #[test]
 fn channel_textures_use_red_green_and_alpha_without_luminance_conversion() {
-    let original = Image::from_u8(4, 4, L::Rgba, vec![64, 192, 0, 127].repeat(16)).unwrap();
+    let original = Image::from_u8(4, 4, L::Rgba, [64, 192, 0, 127].repeat(16)).unwrap();
     for (format, expected) in [("r8", 64), ("a8", 127), ("bc4", 64), ("bc5", 64)] {
         let mut options = EncodeOptions::default();
         options.dds.format = format.into();
