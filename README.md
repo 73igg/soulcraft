@@ -1,28 +1,69 @@
 <h1 align="center">SoulCraft - PhotoCraft Custom</h1>
 
 <p align="center">
-  <b>DDS texture editing with live C3 model previews, built on PhotoCraft 0.8.2.</b><br>
-  Open, edit and export game textures with legacy or DX10 headers,<br>
-  BC1-BC7 compression, HDR, mipmaps, cube maps, arrays and volumes.
+  <b>Texture editing for Eudemons and similar game clients, built on PhotoCraft 0.8.2.</b><br>
+  Paint DDS textures and see changes live on their C3 models.<br>
+  Rotate freely, switch meshes, and inspect skins without repeatedly loading the game client.
 </p>
 
 <p align="center">
-  <a href="https://github.com/73igg/soulcraft/releases/tag/v0.8.2-c3.1"><b>Download the Windows custom build</b></a> |
-  <a href="docs/dds.md">DDS guide and format coverage</a> |
-  <a href="docs/dds-validation.md">Release verification</a>
+  <a href="https://github.com/73igg/soulcraft/releases/tag/v0.8.2-c3.1"><b>Download the Windows C3 + DDS build</b></a> |
+  <a href="#soulcraft-changes">SoulCraft changes</a> |
+  <a href="#getting-started-with-texture-editing">Getting started</a> |
+  <a href="docs/dds.md">DDS format guide</a> |
+  <a href="#verification-and-current-limits">Verification and limits</a>
 </p>
 
-### Live C3 texture preview
+## SoulCraft changes
 
-Open a DDS inside an Eudemons client to see its matching C3 in the right-side **C3 Texture Preview** pane. For a texture outside the client, choose **Client folder**; use **Window > C3 Texture Preview** for a new skin or another image format. Painting, adjustments and undo/redo update the model without saving or restarting the client.
+These are the additions in this fork. The upstream PhotoCraft documentation and credits follow below.
 
-- Drag to rotate freely, wheel to zoom, and Shift-drag or middle-drag to pan. Front, Back, Side, Top and Fit provide quick views.
-- Right-click the viewport and choose **Load different C3 mesh** to preview the texture on another model. Multipart meshes have separate visibility and edited-texture controls.
-- Automatic matching follows client registry aliases, conventional filenames and supported DawnPack resources. PHY through PHY5 geometry and RAW/KKEY/XKEY/ZKEY motion layouts are supported for the initial pose.
-- Direct mesh loads avoid client-wide indexing. Cached client lookups and staged loading show geometry before other-part textures finish. In a native comparison with warmed filesystem caches, the first manual garment load improved from 765 ms to 32-47 ms; warm mesh switching took about 31 ms. Startup time and other assets vary.
-- Verification passed 13 C3 tests and 2,692 UI tests, native Clippy, formatting, dependency-layer and WebAssembly checks. Client mesh surveys covered 94,573 file occurrences; parser coverage does not mean every model was visually inspected.
+### Live C3 model previews
 
-This is a static mesh/texture preview. Animation playback, particle/trail simulation and complete client lighting are outside its scope. Client meshes and textures are read locally and are not bundled. The [release notes](https://github.com/73igg/soulcraft/releases/tag/v0.8.2-c3.1) include usage and verification details.
+- **A dedicated 3D pane on the right.** Open a texture inside an Eudemons client and the editor searches for its corresponding C3 model. Select **Client folder** for textures copied outside the client.
+- **Live texture editing.** Painting, layers, masks, adjustments and undo/redo update the model while you work. Preview the visible composite or an individual DDS surface layer.
+- **Free rotation and inspection.** Drag to rotate in any direction, including the underside; wheel to zoom; Shift-drag or middle-drag to pan. Front, Back, Side, Top and Fit provide quick views.
+- **Manual mesh replacement.** Use **Load mesh**, or right-click the viewport and choose **Load different C3 mesh**, to use another model with the current texture. Multiple automatic matches are selectable.
+- **Multipart controls.** Choose which mesh parts are visible and which receive the edited texture. Other parts use their original textures when available. Lighting, transparency, UV flipping and up-axis controls accommodate different models; Eudemons defaults to -Z.
+- **Broad C3 lookup and parsing.** Client registry aliases, differing mesh/texture IDs, conventional filenames and DawnPack v1001 resources are supported. The importer handles PHY through PHY5 geometry and RAW/KKEY/XKEY/ZKEY motion layouts for the initial pose.
+
+### Faster client lookup and mesh loading
+
+Manual mesh loads use direct reads. Automatic matching checks known client registries and conventional paths before a full directory scan. Client lookup data is cached, and package indexes open on demand.
+
+Geometry appears before other-part textures finish loading. Completing that work preserves the camera and mesh-part choices. Selecting the same client folder reuses cached data; **Find matching model again** refreshes discovery after client assets or registries change.
+
+In native comparisons on this machine with warmed filesystem caches, the first manual garment load improved from **765 ms to 32-47 ms**; warm mesh switching took about **31 ms**. These are sample measurements. Application startup includes separate renderer/canvas work, and other assets or storage devices can take longer.
+
+### DDS import, editing and export
+
+- **Complete texture layouts:** legacy and DX10 headers, mip chains, cube maps and cube arrays, texture arrays and volume slices, exposed as editable layers.
+- **Compressed and uncompressed storage:** BC1/DXT1 through BC7, signed BC4/BC5, signed and unsigned BC6H HDR, DXT2/DXT4 premultiplied alpha, RXGB and DXT5 normal-map export; plus supported 8/16-bit integer, half-float and 32-bit float layouts. The exporter has 37 selectable storage settings.
+- **Editor and CLI workflows:** **File > Export > Export DDS**, DDS in **Export As** and **Save As**, remembered export settings, CLI conversion/batch options, `file.export.dds` and `file.dds.inspect`.
+- **Preserve existing resources:** retain original headers, texture layout and untouched compressed surfaces when saving. Native `.pcraft` projects retain the original DDS container and its surface-layer mapping.
+- **Mip and colour controls:** keep, generate or remove mipmaps; generate volume depth levels; filter sRGB colour in linear light and alpha with premultiplied colour. Retain texture/normal channel values, with explicit colour signalling and compression quality controls.
+- **Decoder and validation fixes:** corrected BC3 colour/alpha decoding and DX10 premultiplied-alpha handling; added bounds, allocation, truncation and unsupported-setting checks. The [DDS guide](docs/dds.md) documents exact coverage and interoperability limits.
+
+The fork also retains PhotoCraft 0.8.2's newer editing tools and background file operations, uses a separate custom application identity and portable preferences, translates the added menu labels across the bundled language catalogs, and caps Cargo compilation at two concurrent jobs. Third-party license notices are included.
+
+### Getting started with texture editing
+
+1. Extract the [Windows portable build](https://github.com/73igg/soulcraft/releases/tag/v0.8.2-c3.1) into its own folder and run **photocraft.exe**.
+2. Open a DDS from your client. If the client cannot be inferred, select **Client folder** and choose its asset directory, normally containing `c3` and `ini`.
+3. For a new skin or another image format, open **Window > C3 Texture Preview**. Use the matching-model dropdown or **Load mesh** when you need to choose a model yourself.
+4. Edit the texture and inspect the preview. Save a `.pcraft` working copy to retain editor layers; use DDS Save/Export controls to write the game texture and choose whether to preserve or regenerate mips.
+
+### Verification and current limits
+
+The C3 release passed **13 C3 tests** and **2,692 UI tests**, with zero failures and 12 existing ignored UI tests. Native Clippy with warnings denied, formatting, dependency layering and C3/UI WebAssembly checks passed. Native interaction checks covered live paint, undo, free rotation, viewport context-menu replacement, staged texture loading and camera preservation.
+
+A survey covered **94,573 C3 file occurrences** across local client trees. The importer accepted **41,405 of 41,406 loose files containing mesh geometry**; the rejected file had invalid motion counts. This measures parsing coverage, not visual verification of every model.
+
+The viewer shows a **static mesh pose**. Animation playback, particle/trail simulation and the complete client material/lighting pipeline remain outside its scope. Unsupported package formats need unpacking; missing secondary textures use a placeholder with a note. Client meshes and textures are read locally and are not bundled or modified by the preview.
+
+See the [C3 + DDS release and checksums](https://github.com/73igg/soulcraft/releases/tag/v0.8.2-c3.1), [C3 verification report](https://github.com/73igg/soulcraft/releases/download/v0.8.2-c3.1/C3-VERIFICATION.md), and [earlier DDS verification](docs/dds-validation.md) for detailed results.
+
+### DDS editing screenshots
 
 <table>
   <tr>
@@ -41,23 +82,7 @@ This is a static mesh/texture preview. Animation playback, particle/trail simula
   </tr>
 </table>
 
-### Changes in this custom build
-
-- Upgraded the separate custom build from the installed 0.2.0 source to this fork's current 0.8.2 main branch, retaining its newer tools, formats, dialogs and background file operations.
-- Replaced limited DDS import with DDS import and export for compressed and uncompressed colour textures, including every subresource of 2D textures, cube maps, cube arrays, texture arrays and volume textures.
-- Added BC1-BC7 encoding and decoding, including signed BC4/BC5, signed and unsigned BC6H HDR, DXT2/DXT4 premultiplied alpha, RXGB and DXT5 normal-map export. Added 8/16-bit integer, half-float and 32-bit float storage choices.
-- Added **File > Export > Export DDS**, DDS in **Export As**, and a DDS **Save As** file filter. Export settings include storage, mipmaps, texture layout, colour signalling and quality, and are remembered between exports. The new menu label is translated in all 20 bundled language catalogs.
-- Preserved original DDS headers, subresource ordering and untouched compressed bytes when saving. Native `.pcraft` projects retain the source texture and remap its surface-layer references when reopened.
-- Added full mip-chain generation and mip removal, filtering sRGB colour in linear light and alpha with premultiplied colour. Volume mipmaps also reduce the depth correctly.
-- Kept texture and normal-map channel values intact instead of applying the generic colour conversion for formats without ICC profiles. Legacy channel-mask import remains available.
-- Corrected BC3 colour endpoint handling and alpha interpolation, checked against Microsoft's DirectXTex decoder. Added DX10 premultiplied-alpha handling, including correct sRGB filtering and storage in linear light.
-- Added CLI DDS options, the `file.export.dds` command, the `file.dds.inspect` query and DDS discovery in batch image folders.
-- Added bounds, allocation and truncation checks, graceful errors for unsupported settings or missing surfaces, and DDS codec, editor, project round-trip and export regression tests.
-- Gave the custom Windows app its own title, application identity and preferences directory; the portable build stores settings beside its executable. Kept the original installation separate.
-- Limited Cargo to two concurrent build jobs to keep local compilation resource use manageable.
-- Added this illustrated changelog, a DDS guide, updated format coverage and bundled third-party licence notices. Removed the upstream ArtCraft logo assets from this modified distribution.
-
-This is an independent custom build of PhotoCraft, published through the SoulCraft fork. The upstream project and its authors are credited below. [DDS guide](docs/dds.md) describes the exact supported texture formats and editing workflow.
+This is an independent custom build of PhotoCraft, published through the SoulCraft fork. The upstream project and its authors are credited below.
 
 ---
 
