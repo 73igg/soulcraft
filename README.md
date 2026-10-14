@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/73igg/soulcraft/releases/tag/v0.8.2-c3.1"><b>Download the Windows C3 + DDS build</b></a> |
+  <a href="https://github.com/73igg/soulcraft/releases/latest"><b>Download SoulCraft for Windows (DDS + C3)</b></a> |
   <a href="#soulcraft-changes">SoulCraft changes</a> |
   <a href="#getting-started-with-texture-editing">Getting started</a> |
   <a href="docs/dds.md">DDS format guide</a> |
@@ -16,7 +16,7 @@
 
 ## SoulCraft changes
 
-These are the additions in this fork. The upstream PhotoCraft documentation and credits follow below.
+DDS editing and C3 model previews are included together in one SoulCraft Windows build. The download link always opens the current combined release. These are the additions in this fork; upstream PhotoCraft documentation and credits follow below.
 
 ### Live C3 model previews
 
@@ -48,7 +48,7 @@ The fork also retains PhotoCraft 0.8.2's newer editing tools and background file
 
 ### Getting started with texture editing
 
-1. Extract the [Windows portable build](https://github.com/73igg/soulcraft/releases/tag/v0.8.2-c3.1) into its own folder and run **photocraft.exe**.
+1. Extract the [Windows portable build](https://github.com/73igg/soulcraft/releases/latest) into its own folder and run **photocraft.exe**.
 2. Open a DDS from your client. If the client cannot be inferred, select **Client folder** and choose its asset directory, normally containing `c3` and `ini`.
 3. For a new skin or another image format, open **Window > C3 Texture Preview**. Use the matching-model dropdown or **Load mesh** when you need to choose a model yourself.
 4. Edit the texture and inspect the preview. Save a `.pcraft` working copy to retain editor layers; use DDS Save/Export controls to write the game texture and choose whether to preserve or regenerate mips.
@@ -61,7 +61,7 @@ A survey covered **94,573 C3 file occurrences** across local client trees. The i
 
 The viewer shows a **static mesh pose**. Animation playback, particle/trail simulation and the complete client material/lighting pipeline remain outside its scope. Unsupported package formats need unpacking; missing secondary textures use a placeholder with a note. Client meshes and textures are read locally and are not bundled or modified by the preview.
 
-See the [C3 + DDS release and checksums](https://github.com/73igg/soulcraft/releases/tag/v0.8.2-c3.1), [C3 verification report](https://github.com/73igg/soulcraft/releases/download/v0.8.2-c3.1/C3-VERIFICATION.md), and [earlier DDS verification](docs/dds-validation.md) for detailed results.
+See the [C3 + DDS release and checksums](https://github.com/73igg/soulcraft/releases/latest), [Combined verification report](https://github.com/73igg/soulcraft/releases/latest/download/VERIFICATION.md), and [DDS workflow verification](docs/dds-validation.md) for detailed results.
 
 ### DDS editing screenshots
 

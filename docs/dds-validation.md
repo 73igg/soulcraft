@@ -1,12 +1,12 @@
-# PhotoCraft Custom DDS release verification
+# DDS workflow verification
 
-Release: **v0.8.2-dds.1**, Windows 10/11 x64 portable.
+These checks document the DDS implementation baseline for the combined SoulCraft Windows portable build. DDS editing and C3 preview ship together in the [current release](https://github.com/73igg/soulcraft/releases/latest). The results below are from the DDS validation run, before the C3 preview was added.
 
 Completed: 2026-10-14 02:57 UTC.
 
 Upgraded from the earlier 0.2.0 DDS work to SoulCraft main at `99e1138877e6aa7e856c6883b415e708d042fc59` (PhotoCraft 0.8.2).
 
-Compiled code commit: `983faa455e19c045b19b1b9fecacfe65e48217c3`. Release-tag changes after this commit contain documentation and screenshots only.
+Compiled code commit: `983faa455e19c045b19b1b9fecacfe65e48217c3`. The immediately following commits added documentation and screenshots; subsequent C3 work retains these DDS workflows.
 
 Binary version: `photocraft-cli 0.8.2 (983faa455, 2026-10-14)`. Cargo compilation and test concurrency were capped at two jobs/threads.
 
