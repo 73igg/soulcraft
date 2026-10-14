@@ -1,16 +1,28 @@
 <h1 align="center">SoulCraft - PhotoCraft Custom</h1>
 
 <p align="center">
-  <b>DDS texture editing, built on the current PhotoCraft 0.8.2 source.</b><br>
+  <b>DDS texture editing with live C3 model previews, built on PhotoCraft 0.8.2.</b><br>
   Open, edit and export game textures with legacy or DX10 headers,<br>
   BC1-BC7 compression, HDR, mipmaps, cube maps, arrays and volumes.
 </p>
 
 <p align="center">
-  <a href="https://github.com/73igg/soulcraft/releases/tag/v0.8.2-dds.1"><b>Download the Windows custom build</b></a> |
+  <a href="https://github.com/73igg/soulcraft/releases/tag/v0.8.2-c3.1"><b>Download the Windows custom build</b></a> |
   <a href="docs/dds.md">DDS guide and format coverage</a> |
   <a href="docs/dds-validation.md">Release verification</a>
 </p>
+
+### Live C3 texture preview
+
+Open a DDS inside an Eudemons client to see its matching C3 in the right-side **C3 Texture Preview** pane. For a texture outside the client, choose **Client folder**; use **Window > C3 Texture Preview** for a new skin or another image format. Painting, adjustments and undo/redo update the model without saving or restarting the client.
+
+- Drag to rotate freely, wheel to zoom, and Shift-drag or middle-drag to pan. Front, Back, Side, Top and Fit provide quick views.
+- Right-click the viewport and choose **Load different C3 mesh** to preview the texture on another model. Multipart meshes have separate visibility and edited-texture controls.
+- Automatic matching follows client registry aliases, conventional filenames and supported DawnPack resources. PHY through PHY5 geometry and RAW/KKEY/XKEY/ZKEY motion layouts are supported for the initial pose.
+- Direct mesh loads avoid client-wide indexing. Cached client lookups and staged loading show geometry before other-part textures finish. In a native comparison with warmed filesystem caches, the first manual garment load improved from 765 ms to 32-47 ms; warm mesh switching took about 31 ms. Startup time and other assets vary.
+- Verification passed 13 C3 tests and 2,692 UI tests, native Clippy, formatting, dependency-layer and WebAssembly checks. Client mesh surveys covered 94,573 file occurrences; parser coverage does not mean every model was visually inspected.
+
+This is a static mesh/texture preview. Animation playback, particle/trail simulation and complete client lighting are outside its scope. Client meshes and textures are read locally and are not bundled. The [release notes](https://github.com/73igg/soulcraft/releases/tag/v0.8.2-c3.1) include usage and verification details.
 
 <table>
   <tr>

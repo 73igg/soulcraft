@@ -42,6 +42,7 @@ pub fn check(app: &mut PhotocraftApp, ctx: &egui::Context) {
 /// path, record why, and tell the user. Documents are untouched.
 pub fn fall_back(app: &mut PhotocraftApp, fault: &photocraft_gpu::Fault) {
     let Some(gpu) = app.gpu.take() else { return };
+    app.c3_preview.release_gpu();
     log::error!("{fault}; using the CPU renderer for the rest of the session");
     gpu.release();
     // Canvas caches pointed at GPU textures: rebuild them as egui textures.

@@ -3836,3 +3836,13 @@ curves	Smooth	Εξομάλυνση
 	Auto Add/Delete	Αυτόματη προσθήκη/διαγραφή
 	ICO is limited to 256 × 256 pixels	Το ICO περιορίζεται σε 256 × 256 εικονοστοιχεία
 	Export DDS…	Εξαγωγή DDS…
+
+# C3 texture preview commands
+	C3 Texture Preview	Προεπισκόπηση υφής C3
+	Load C3 Mesh…	Φόρτωση πλέγματος C3…
+	Select C3 Client Folder…	Επιλογή φακέλου πελάτη C3…
+	Find Matching C3 Model	Εύρεση αντίστοιχου μοντέλου C3
+	Reset C3 View	Επαναφορά προβολής C3
+	C3 View Preset	Προεπιλογή προβολής C3
+	C3 Preview Settings	Ρυθμίσεις προεπισκόπησης C3
+	C3 Mesh Part Settings	Ρυθμίσεις τμημάτων πλέγματος C3

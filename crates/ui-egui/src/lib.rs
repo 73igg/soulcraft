@@ -37,6 +37,7 @@ pub mod brush_preview;
 pub mod brush_resize;
 pub mod brush_sections;
 pub mod brushes_tab;
+pub(crate) mod c3_preview;
 pub(crate) mod cam_preview;
 mod cam_transform;
 mod camera_raw_detail_ui;
@@ -497,6 +498,7 @@ pub(crate) type HistJob = (DocId, u64, std::sync::mpsc::Receiver<(DocId, f64, st
 type InfoSampleKey = (i32, i32, u64, u32);
 
 pub struct PhotocraftApp {
+    pub(crate) c3_preview: c3_preview::Runtime,
     pub session: Session,
     pub ui: UiState,
     pub services: Services,
@@ -765,6 +767,7 @@ pub struct PhotocraftApp {
 impl PhotocraftApp {
     pub fn new(session: Session, services: Services) -> Self {
         let mut app = Self {
+            c3_preview: Default::default(),
             session,
             ui: UiState::default(),
             services,
@@ -924,6 +927,7 @@ impl PhotocraftApp {
         };
         self.perf.gpu_info.canvas = "gpu".into();
         self.gpu = Some(gpu);
+        self.c3_preview.set_wgpu(rs);
         self.prefs_rt.gpu_style = None;
     }
 
@@ -1839,6 +1843,9 @@ impl eframe::App for PhotocraftApp {
         }
         if chrome && self.ui.panels.dock {
             panels::right_dock(self, ui);
+        }
+        if chrome && self.ui.panels.dock {
+            c3_preview::show(self, ui);
         }
         let t = theme::Tokens::get(&ctx);
         let backdrop = if chrome { prefs_ui::pasteboard_color(self).unwrap_or(t.canvas) } else { egui::Color32::BLACK };

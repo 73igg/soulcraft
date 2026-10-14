@@ -3136,3 +3136,13 @@ curves	Smooth	Glätten
 	Auto Add/Delete	Autom. hinzuf./löschen
 	ICO is limited to 256 × 256 pixels	ICO ist auf 256 × 256 Pixel begrenzt
 	Export DDS…	DDS exportieren…
+
+# C3 texture preview commands
+	C3 Texture Preview	C3-Texturvorschau
+	Load C3 Mesh…	C3-Mesh laden…
+	Select C3 Client Folder…	C3-Clientordner auswählen…
+	Find Matching C3 Model	Passendes C3-Modell suchen
+	Reset C3 View	C3-Ansicht zurücksetzen
+	C3 View Preset	C3-Ansichtsvorgabe
+	C3 Preview Settings	C3-Vorschaueinstellungen
+	C3 Mesh Part Settings	C3-Meshteileinstellungen

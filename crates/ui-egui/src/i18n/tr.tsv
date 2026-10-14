@@ -3870,3 +3870,13 @@ cameraData	Lens	Lens
 	Solidity:	Doluluk:
 	Redrawing	Yeniden çiziliyor
 	Export DDS…	DDS Dışa Aktar…
+
+# C3 texture preview commands
+	C3 Texture Preview	C3 Doku Önizlemesi
+	Load C3 Mesh…	C3 Mesh Yükle…
+	Select C3 Client Folder…	C3 İstemci Klasörünü Seç…
+	Find Matching C3 Model	Eşleşen C3 Modelini Bul
+	Reset C3 View	C3 Görünümünü Sıfırla
+	C3 View Preset	C3 Görünüm Ön Ayarı
+	C3 Preview Settings	C3 Önizleme Ayarları
+	C3 Mesh Part Settings	C3 Mesh Parçası Ayarları

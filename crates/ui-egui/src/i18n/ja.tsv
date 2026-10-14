@@ -3816,3 +3816,13 @@ curves	Smooth	スムーズ
 	Copy Texture to Other Tools	テクスチャを他のツールにコピー
 	ICO is limited to 256 × 256 pixels	ICO は 256 × 256 ピクセルまでです
 	Export DDS…	DDS を書き出し…
+
+# C3 texture preview commands
+	C3 Texture Preview	C3テクスチャプレビュー
+	Load C3 Mesh…	C3メッシュを読み込む…
+	Select C3 Client Folder…	C3クライアントフォルダーを選択…
+	Find Matching C3 Model	対応するC3モデルを検索
+	Reset C3 View	C3ビューをリセット
+	C3 View Preset	C3ビューのプリセット
+	C3 Preview Settings	C3プレビュー設定
+	C3 Mesh Part Settings	C3メッシュパーツ設定

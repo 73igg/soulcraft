@@ -3928,3 +3928,13 @@ layerLabel	No Color	Sem cor
 	Auto Add/Delete	Adicionar/excluir automaticamente
 	ICO is limited to 256 × 256 pixels	ICO é limitado a 256 × 256 pixels
 	Export DDS…	Exportar DDS…
+
+# C3 texture preview commands
+	C3 Texture Preview	Prévia de textura C3
+	Load C3 Mesh…	Carregar malha C3…
+	Select C3 Client Folder…	Selecionar pasta do cliente C3…
+	Find Matching C3 Model	Encontrar modelo C3 correspondente
+	Reset C3 View	Redefinir visualização C3
+	C3 View Preset	Predefinição de visualização C3
+	C3 Preview Settings	Configurações da prévia C3
+	C3 Mesh Part Settings	Configurações das partes da malha C3

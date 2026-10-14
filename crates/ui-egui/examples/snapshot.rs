@@ -164,6 +164,7 @@ fn main() {
     let (req, _rx) = ControlRequest::new("ui.inspect", Value::Null);
     if let Outcome::Done(v) = handle(harness.state_mut(), &ctx, &req) {
         println!("perf: {}", v["result"]["perf"]["timings"]);
+        println!("c3Preview: {}", v["result"]["c3Preview"]);
     }
     println!(
         "language: {}",

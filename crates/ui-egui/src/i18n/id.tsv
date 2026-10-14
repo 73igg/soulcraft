@@ -3127,3 +3127,13 @@ curves	Smooth	Haluskan
 	Auto Add/Delete	Tambah/Hapus Otomatis
 	ICO is limited to 256 × 256 pixels	ICO dibatasi hingga 256 × 256 piksel
 	Export DDS…	Ekspor DDS…
+
+# C3 texture preview commands
+	C3 Texture Preview	Pratinjau Tekstur C3
+	Load C3 Mesh…	Muat Mesh C3…
+	Select C3 Client Folder…	Pilih Folder Klien C3…
+	Find Matching C3 Model	Cari Model C3 yang Cocok
+	Reset C3 View	Atur Ulang Tampilan C3
+	C3 View Preset	Preset Tampilan C3
+	C3 Preview Settings	Pengaturan Pratinjau C3
+	C3 Mesh Part Settings	Pengaturan Bagian Mesh C3

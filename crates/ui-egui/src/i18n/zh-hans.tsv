@@ -2748,3 +2748,13 @@ curves	Smooth	平滑
 	Auto Add/Delete	自动添加/删除
 	ICO is limited to 256 × 256 pixels	ICO 最大为 256 × 256 像素
 	Export DDS…	导出 DDS…
+
+# C3 texture preview commands
+	C3 Texture Preview	C3纹理预览
+	Load C3 Mesh…	加载C3网格…
+	Select C3 Client Folder…	选择C3客户端文件夹…
+	Find Matching C3 Model	查找匹配的C3模型
+	Reset C3 View	重置C3视图
+	C3 View Preset	C3视图预设
+	C3 Preview Settings	C3预览设置
+	C3 Mesh Part Settings	C3网格部件设置

@@ -3104,3 +3104,13 @@ curves	Smooth	Сгладить
 	Integrated Density	Интегральная плотность
 	Length	Длина
 	Export DDS…	Экспортировать DDS…
+
+# C3 texture preview commands
+	C3 Texture Preview	Предпросмотр текстуры C3
+	Load C3 Mesh…	Загрузить сетку C3…
+	Select C3 Client Folder…	Выбрать папку клиента C3…
+	Find Matching C3 Model	Найти соответствующую модель C3
+	Reset C3 View	Сбросить вид C3
+	C3 View Preset	Предустановка вида C3
+	C3 Preview Settings	Настройки предпросмотра C3
+	C3 Mesh Part Settings	Настройки частей сетки C3

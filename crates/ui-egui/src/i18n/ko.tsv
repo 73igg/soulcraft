@@ -3313,3 +3313,13 @@ curves	Smooth	매끄럽게
 	Auto Add/Delete	자동 추가/삭제
 	ICO is limited to 256 × 256 pixels	ICO는 256 × 256픽셀로 제한됩니다
 	Export DDS…	DDS 내보내기…
+
+# C3 texture preview commands
+	C3 Texture Preview	C3 텍스처 미리 보기
+	Load C3 Mesh…	C3 메시 불러오기…
+	Select C3 Client Folder…	C3 클라이언트 폴더 선택…
+	Find Matching C3 Model	일치하는 C3 모델 찾기
+	Reset C3 View	C3 보기 초기화
+	C3 View Preset	C3 보기 프리셋
+	C3 Preview Settings	C3 미리 보기 설정
+	C3 Mesh Part Settings	C3 메시 부품 설정

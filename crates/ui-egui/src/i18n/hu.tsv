@@ -4059,3 +4059,13 @@ cameraRaw	Yellow	Sárga
 	Solidity:	Fedőképesség:
 	Redrawing	Újrarajzolás
 	Export DDS…	DDS exportálása…
+
+# C3 texture preview commands
+	C3 Texture Preview	C3 textúra előnézete
+	Load C3 Mesh…	C3 háló betöltése…
+	Select C3 Client Folder…	C3 kliensmappa kiválasztása…
+	Find Matching C3 Model	Megfelelő C3 modell keresése
+	Reset C3 View	C3 nézet visszaállítása
+	C3 View Preset	C3 nézetbeállítás
+	C3 Preview Settings	C3 előnézet beállításai
+	C3 Mesh Part Settings	C3 hálórészek beállításai

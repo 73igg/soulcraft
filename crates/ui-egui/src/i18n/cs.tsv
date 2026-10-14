@@ -3746,3 +3746,13 @@ navigator	Zoom	Zvětšení
 	Auto Add/Delete	Automaticky přidat/odstranit
 	ICO is limited to 256 × 256 pixels	ICO je omezen na 256 × 256 pixelů
 	Export DDS…	Exportovat DDS…
+
+# C3 texture preview commands
+	C3 Texture Preview	Náhled textury C3
+	Load C3 Mesh…	Načíst síť C3…
+	Select C3 Client Folder…	Vybrat složku klienta C3…
+	Find Matching C3 Model	Najít odpovídající model C3
+	Reset C3 View	Obnovit pohled C3
+	C3 View Preset	Předvolba pohledu C3
+	C3 Preview Settings	Nastavení náhledu C3
+	C3 Mesh Part Settings	Nastavení částí sítě C3

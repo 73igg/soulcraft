@@ -3140,3 +3140,13 @@ curves	Smooth	Lisser
 	Auto Add/Delete	Ajout/suppr. auto
 	ICO is limited to 256 × 256 pixels	Le format ICO est limité à 256 × 256 pixels
 	Export DDS…	Exporter DDS…
+
+# C3 texture preview commands
+	C3 Texture Preview	Aperçu de texture C3
+	Load C3 Mesh…	Charger un maillage C3…
+	Select C3 Client Folder…	Sélectionner le dossier du client C3…
+	Find Matching C3 Model	Trouver le modèle C3 correspondant
+	Reset C3 View	Réinitialiser la vue C3
+	C3 View Preset	Vue C3 prédéfinie
+	C3 Preview Settings	Paramètres de l’aperçu C3
+	C3 Mesh Part Settings	Paramètres des parties du maillage C3

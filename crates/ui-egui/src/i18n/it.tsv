@@ -4101,3 +4101,13 @@ navigator	Zoom	Zoom
 	Auto Add/Delete	Aggiungi/elimina automaticamente
 	ICO is limited to 256 × 256 pixels	ICO è limitato a 256 × 256 pixel
 	Export DDS…	Esporta DDS…
+
+# C3 texture preview commands
+	C3 Texture Preview	Anteprima della texture C3
+	Load C3 Mesh…	Carica mesh C3…
+	Select C3 Client Folder…	Seleziona cartella del client C3…
+	Find Matching C3 Model	Trova modello C3 corrispondente
+	Reset C3 View	Reimposta vista C3
+	C3 View Preset	Vista C3 predefinita
+	C3 Preview Settings	Impostazioni anteprima C3
+	C3 Mesh Part Settings	Impostazioni parti della mesh C3

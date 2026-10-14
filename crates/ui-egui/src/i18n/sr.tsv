@@ -4212,3 +4212,13 @@ shape	Appearance	Izgled
 	Solidity:	Punoća:
 	Redrawing	Ponovno iscrtavanje
 	Export DDS…	Izvezi DDS…
+
+# C3 texture preview commands
+	C3 Texture Preview	Преглед C3 текстуре
+	Load C3 Mesh…	Учитај C3 мрежу…
+	Select C3 Client Folder…	Изабери фасциклу C3 клијента…
+	Find Matching C3 Model	Пронађи одговарајући C3 модел
+	Reset C3 View	Ресетуј C3 приказ
+	C3 View Preset	Унапред подешени C3 приказ
+	C3 Preview Settings	Подешавања C3 прегледа
+	C3 Mesh Part Settings	Подешавања делова C3 мреже

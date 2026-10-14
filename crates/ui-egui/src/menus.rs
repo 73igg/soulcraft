@@ -21,6 +21,14 @@ pub const TOP_MENUS: [&str; 10] = ["File", "Edit", "Image", "Layer", "Type", "Se
 
 /// UI-level commands (handled by the shell rather than the engine): id, label, menu, shortcut.
 pub const UI_COMMANDS: &[(&str, &str, &[&str], Option<&str>)] = &[
+    ("window.toggle.c3Preview", "C3 Texture Preview", &["Window"], None),
+    ("preview.c3.load", "Load C3 Mesh…", &[], None),
+    ("preview.c3.clientFolder", "Select C3 Client Folder…", &[], None),
+    ("preview.c3.rematch", "Find Matching C3 Model", &[], None),
+    ("preview.c3.reset", "Reset C3 View", &[], None),
+    ("preview.c3.view", "C3 View Preset", &[], None),
+    ("preview.c3.settings", "C3 Preview Settings", &[], None),
+    ("preview.c3.part", "C3 Mesh Part Settings", &[], None),
     ("ui.symmetryTransform", "Transform Symmetry", &[], None),
     // Right-click the options bar's tool icon (#2825); `tool.resetAll` asks first.
     ("tool.reset", "Reset Tool", &[], None),
@@ -236,6 +244,9 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
     // View/Window/Type shell items, and dialogs/pickers in front of File commands.
     // Edit › Preferences, Keyboard Shortcuts, Color Settings and other Edit dialogs.
     if let Some(r) = crate::prefs_ui::invoke(app, ctx, id, &params) {
+        return r;
+    }
+    if let Some(r) = crate::c3_preview::menu(app, ctx, id, &params) {
         return r;
     }
     // Save for Web, Print and the other File-menu dialogs added with slices.
@@ -750,6 +761,7 @@ pub fn is_enabled(app: &PhotocraftApp, id: &str) -> bool {
         return e;
     }
     match id {
+        i if i.starts_with("preview.c3.") => app.session.active().is_some(),
         "window.panel.activate" | "window.panel.layout" => true,
         "window.panel.group" | "window.panel.move" | "window.panel.float" | "window.panel.dock" | "window.panel.close" => !app.session.prefs().workspace_locked,
         "file.open" | "file.exit" | "file.clearRecent" | "file.removeRecent" | "help.about" | "help.systemInfo" | "edit.search" => true,
@@ -808,6 +820,9 @@ const MODE_CHECKS: [&str; 11] = ["rgb", "grayscale", "cmyk", "lab", "multichanne
 
 /// Is a UI-level panel toggle currently on (for checkmarks)?
 fn checked(app: &PhotocraftApp, id: &str) -> Option<bool> {
+    if id == "window.toggle.c3Preview" {
+        return Some(crate::c3_preview::visible(app));
+    }
     if let Some(checked) = crate::panel_docking::checked(app, id) {
         return Some(checked);
     }

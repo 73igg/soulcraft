@@ -127,3 +127,13 @@ The synthetic `crates/codecs/tests/fixtures/dds-premultiplied-srgb.dds` fixture 
 | `docs/images/photocraft-custom-dds-*.png` | Actual custom-build DDS editing and export screenshots | SoulCraft custom build; underlying public-domain artwork credited in `docs/images/SOURCES.md` | This repository | MIT OR Apache-2.0 for the UI; public-domain artwork |
 | `licenses/egui-default-*.txt` (embedded dependency font notices) | egui's bundled default fonts, used without the optional craft-fonts build input | Ubuntu, Hack, Noto and emoji-icon-font authors, credited in the included notices | [egui default fonts](https://github.com/emilk/egui/tree/0.36.2/crates/epaint_default_fonts/fonts) | Ubuntu Font Licence, SIL OFL, and MIT/BSD as specified in each notice |
 | Portable release `VCRUNTIME140.dll`, `licenses/Microsoft-VC-runtime-NOTICE.txt` | Unmodified x64 Visual C++ runtime dependency | Microsoft Corporation | Visual Studio 2022 `VC/Redist/MSVC` directory; [redistribution terms](https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution) | Microsoft Visual Studio redistributable code terms; separate from the source licence |
+
+## C3 preview dependencies
+
+The C3 importer, client lookup, camera and preview shader are original Rust/WGSL code under this project's MIT OR Apache-2.0 licence. Client meshes and textures are read locally and are not bundled.
+
+| Dependency | Purpose | Source | License notices |
+|---|---|---|---|
+| encoding_rs 0.8.42 | Legacy GBK names and client catalogs | https://github.com/hsivonen/encoding_rs | `licenses/encoding_rs-0.8.42-*`: MIT OR Apache-2.0, plus BSD-3-Clause WHATWG data notices |
+| core_detect 1.0.0 | CPU feature detection for encoding_rs | https://github.com/thomcc/core_detect | `licenses/core_detect-1.0.0-*`: MIT OR Apache-2.0 |
+| multiversion_no_op 1.0.0 | encoding_rs CPU dispatch support | https://github.com/hsivonen/multiversion_no_op | `licenses/multiversion_no_op-1.0.0-*`: MIT OR Apache-2.0 |

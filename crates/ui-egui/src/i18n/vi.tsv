@@ -3625,3 +3625,13 @@ curves	Smooth	Làm mượt
 	Auto Add/Delete	Tự động thêm/xóa
 	ICO is limited to 256 × 256 pixels	ICO giới hạn ở 256 × 256 pixel
 	Export DDS…	Xuất DDS…
+
+# C3 texture preview commands
+	C3 Texture Preview	Xem trước kết cấu C3
+	Load C3 Mesh…	Tải lưới C3…
+	Select C3 Client Folder…	Chọn thư mục máy khách C3…
+	Find Matching C3 Model	Tìm mô hình C3 tương ứng
+	Reset C3 View	Đặt lại góc nhìn C3
+	C3 View Preset	Góc nhìn C3 đặt sẵn
+	C3 Preview Settings	Cài đặt xem trước C3
+	C3 Mesh Part Settings	Cài đặt phần lưới C3

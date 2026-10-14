@@ -1043,6 +1043,8 @@ pub struct ColorPanelState {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct UiState {
+    #[serde(default)]
+    pub c3_preview: crate::c3_preview::State,
     pub tool: Tool,
     /// The last tool used in each shortcut group (the tools sharing a key, [`Tool::key`]), at most
     /// one per group: the group's key brings it back, as in Photoshop (#2608).
@@ -1269,6 +1271,7 @@ pub struct UiState {
 impl Default for UiState {
     fn default() -> Self {
         Self {
+            c3_preview: Default::default(),
             tool: Tool::Brush,
             group_tools: Vec::new(),
             spring: None,
