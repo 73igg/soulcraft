@@ -3908,3 +3908,8 @@ curves	Smooth	Vloeiend maken
 	C3 View Preset	C3-weergavevoorinstelling
 	C3 Preview Settings	C3-voorbeeldinstellingen
 	C3 Mesh Part Settings	C3-meshonderdeelinstellingen
+# Linked C3 objects
+	C3 Preview	C3-voorbeeld
+	C3 Linked Object	Gekoppeld C3-object
+	C3 Object Piece Visibility	Zichtbaarheid van C3-objectonderdelen
+	C3 Object Textures	C3-objecttexturen

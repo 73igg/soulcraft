@@ -2,7 +2,7 @@
 
 <p align="center">
   <b>Texture editing for Eudemons and similar game clients, built on PhotoCraft 0.8.2.</b><br>
-  Paint DDS textures and see changes live on their C3 models.<br>
+  Paint DDS and TGA textures and see changes live on their C3 models.<br>
   Rotate freely, switch meshes, and inspect skins without repeatedly loading the game client.
 </p>
 
@@ -17,6 +17,16 @@
 ## SoulCraft changes
 
 DDS editing and C3 model previews are included together in one SoulCraft Windows build. The download link always opens the current combined release. These are the additions in this fork; upstream PhotoCraft documentation and credits follow below.
+
+### Linked C3 objects and tiled texture editing
+
+- **Load the complete INI object.** Opening a linked texture assembles the sibling C3 files and texture bindings from its INI record. Registries in the parent client are found when working inside `decomp`. Choose another matching INI object when a texture belongs to several objects.
+- **C3 Preview tab beside Layers, Channels and Paths.** Show, hide or solo entire C3 files, expand their individual mesh parts, and jump to the textures used by each piece. Missing references stay listed with an explanation.
+- **Object textures at the top of Layers.** Select a texture to edit, toggle its tile, or use **Show all textures** for a tiled editing area. Click a tile to make it active; **Single texture** restores the normal canvas. Shared textures open once and update all their linked pieces.
+- **DDS and TGA materials together.** Linked objects can use either format, including a mix of both. TGA alpha stays editable in Channels and is applied to the live model preview; normal 24/32-bit TGA saving remains available.
+- **Separate files and undo histories.** Each texture remains an ordinary document with its own layers, DDS surfaces, dirty indicator, undo and Save/Save As. Existing unsaved documents are reused. Hiding a C3 piece or texture tile preserves the open documents and edits; switching linked textures preserves the 3D camera.
+
+See the [linked-object workflow and limits](docs/c3-objects.md).
 
 ### Live C3 model previews
 
@@ -49,13 +59,13 @@ The fork also retains PhotoCraft 0.8.2's newer editing tools and background file
 ### Getting started with texture editing
 
 1. Extract the [Windows portable build](https://github.com/73igg/soulcraft/releases/latest) into its own folder and run **photocraft.exe**.
-2. Open a DDS from your client. If the client cannot be inferred, select **Client folder** and choose its asset directory, normally containing `c3` and `ini`.
+2. Open a DDS or TGA from your client. If the client cannot be inferred, select **Client folder** and choose its asset directory, normally containing `c3` and `ini`.
 3. For a new skin or another image format, open **Window > C3 Texture Preview**. Use the matching-model dropdown or **Load mesh** when you need to choose a model yourself.
-4. Edit the texture and inspect the preview. Save a `.pcraft` working copy to retain editor layers; use DDS Save/Export controls to write the game texture and choose whether to preserve or regenerate mips.
+4. Edit the texture and inspect the preview. Save a `.pcraft` working copy to retain editor layers; save TGA with its alpha channel or use DDS Save/Export controls to write the game texture and choose whether to preserve or regenerate mips.
 
 ### Verification and current limits
 
-The C3 release passed **13 C3 tests** and **2,692 UI tests**, with zero failures and 12 existing ignored UI tests. Native Clippy with warnings denied, formatting, dependency layering and C3/UI WebAssembly checks passed. Native interaction checks covered live paint, undo, free rotation, viewport context-menu replacement, staged texture loading and camera preservation.
+The multipart update passed **19 C3 tests**, **2,702 UI tests** (12 existing ignored tests) and **115 native application tests**. Clippy with warnings denied, formatting, dependency layering and C3/UI WebAssembly checks passed; Photoshop menu parity remains 632/632. Native checks on copies of real client assets covered multipart garments, mounts, monsters, shared textures, helmets and static effects; tiled editing, live paint, undo/redo, camera preservation, visibility, DDS copy saving, parent-INI discovery and missing-resource handling. A missing-texture regression fixture completed in 94 ms without scanning an unrelated directory tree. TGA checks cover uncompressed/RLE 24/32-bit imports, editable alpha, layer transparency and save/reopen; a mixed DDS/TGA native scene also passed live editing and undo/redo.
 
 A survey covered **94,573 C3 file occurrences** across local client trees. The importer accepted **41,405 of 41,406 loose files containing mesh geometry**; the rejected file had invalid motion counts. This measures parsing coverage, not visual verification of every model.
 

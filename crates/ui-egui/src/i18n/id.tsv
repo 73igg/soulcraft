@@ -3137,3 +3137,8 @@ curves	Smooth	Haluskan
 	C3 View Preset	Preset Tampilan C3
 	C3 Preview Settings	Pengaturan Pratinjau C3
 	C3 Mesh Part Settings	Pengaturan Bagian Mesh C3
+# Linked C3 objects
+	C3 Preview	Pratinjau C3
+	C3 Linked Object	Objek C3 tertaut
+	C3 Object Piece Visibility	Visibilitas bagian objek C3
+	C3 Object Textures	Tekstur objek C3

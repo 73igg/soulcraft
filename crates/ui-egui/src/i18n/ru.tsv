@@ -3114,3 +3114,8 @@ curves	Smooth	Сгладить
 	C3 View Preset	Предустановка вида C3
 	C3 Preview Settings	Настройки предпросмотра C3
 	C3 Mesh Part Settings	Настройки частей сетки C3
+# Linked C3 objects
+	C3 Preview	Предпросмотр C3
+	C3 Linked Object	Связанный объект C3
+	C3 Object Piece Visibility	Видимость частей объекта C3
+	C3 Object Textures	Текстуры объекта C3

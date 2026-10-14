@@ -3826,3 +3826,8 @@ curves	Smooth	スムーズ
 	C3 View Preset	C3ビューのプリセット
 	C3 Preview Settings	C3プレビュー設定
 	C3 Mesh Part Settings	C3メッシュパーツ設定
+# Linked C3 objects
+	C3 Preview	C3プレビュー
+	C3 Linked Object	リンクされたC3オブジェクト
+	C3 Object Piece Visibility	C3オブジェクト部品の表示
+	C3 Object Textures	C3オブジェクトのテクスチャ

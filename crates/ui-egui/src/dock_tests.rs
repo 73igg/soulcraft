@@ -407,6 +407,8 @@ fn double_clicking_a_tab_collapses_and_dragging_a_strip_reorders() {
     h.state_mut().ui.dock.set_collapsed(Group::Color, false);
     h.run_steps(3);
     // Drag the Layers tab strip (right of its tabs) above Color.
+    crate::panels::request_dock_width(&h.ctx, 520.0);
+    h.run_steps(3);
     let layers = rect_of(&h, Group::Layers);
     let strip = Pos2::new(layers.right() - 60.0, layers.top() + 13.0);
     let to = rect_of(&h, Group::Color).left_top() + vec2(120.0, 10.0);
@@ -1001,15 +1003,15 @@ fn move_tab_reorders_by_name_and_bad_saved_orders_fall_back() {
     let mut l = DockLayout::default();
     let names = |l: &DockLayout, g, pro| l.visible_tabs(g, pro).into_iter().map(|(_, n)| n).collect::<Vec<_>>();
     l.move_tab(Group::Layers, 2, Some(0), true);
-    assert_eq!(l.visible_tabs(Group::Layers, true), vec![(2, "Paths"), (0, "Layers"), (1, "Channels")]);
-    l.move_tab(Group::Layers, 2, None, true);
-    assert_eq!(names(&l, Group::Layers, true), ["Layers", "Channels", "Paths"]);
+    assert_eq!(l.visible_tabs(Group::Layers, true), vec![(2, "Paths"), (0, "Layers"), (1, "Channels"), (3, "C3 Preview")]);
+    l.move_tab(Group::Layers, 2, Some(3), true);
+    assert_eq!(names(&l, Group::Layers, true), ["Layers", "Channels", "Paths", "C3 Preview"]);
     assert!(l.tab_order.is_empty(), "the default order is stored as nothing");
     // Out-of-range tabs and moves onto themselves change nothing; an unknown `before` is last.
-    for (tab, before) in [(9, Some(0)), (usize::MAX, None), (1, Some(1)), (2, Some(9))] {
+    for (tab, before) in [(9, Some(0)), (usize::MAX, None), (1, Some(1)), (3, Some(9))] {
         let mut m = l.clone();
         m.move_tab(Group::Layers, tab, before, true);
-        assert_eq!(names(&m, Group::Layers, true), ["Layers", "Channels", "Paths"], "{tab} {before:?}");
+        assert_eq!(names(&m, Group::Layers, true), ["Layers", "Channels", "Paths", "C3 Preview"], "{tab} {before:?}");
     }
     // Names, not positions: the order survives the Pro/Studio swap of Color and Swatches.
     l.move_tab(Group::Color, 3, Some(0), true);
@@ -1031,11 +1033,11 @@ fn move_tab_reorders_by_name_and_bad_saved_orders_fall_back() {
         let back: DockLayout = serde_json::from_value(json!({"order": ["layers"], "tabOrder": bad})).unwrap();
         assert_eq!(back.order().first(), Some(&Group::Layers), "{bad}");
         let layers = names(&back, Group::Layers, true);
-        assert!(layers == ["Layers", "Channels", "Paths"] || layers == ["Paths", "Layers", "Channels"], "{bad}: {layers:?}");
+        assert!(layers == ["Layers", "Channels", "Paths", "C3 Preview"] || layers == ["Paths", "Layers", "Channels", "C3 Preview"], "{bad}: {layers:?}");
         assert_eq!(back.visible_tabs(Group::Color, true).len(), 4);
     }
     let back: DockLayout = serde_json::from_value(json!({"tabOrder": {"layers": ["Channels"]}})).unwrap();
-    assert_eq!(names(&back, Group::Layers, true), ["Channels", "Layers", "Paths"], "missing tabs follow in their default order");
+    assert_eq!(names(&back, Group::Layers, true), ["Channels", "Layers", "Paths", "C3 Preview"], "missing tabs follow in their default order");
 }
 
 /// #2272: dragging a tab along its strip reorders the group's tabs; the order persists in the
@@ -1051,7 +1053,7 @@ fn dragging_a_tab_reorders_the_group_and_the_order_persists() {
         let layers = tab_rect(&h, Group::Layers, 0);
         drag(&mut h, paths.center(), layers.left_center() + vec2(4.0, 0.0));
         let strip: Vec<usize> = strip_tabs(&h, Group::Layers).iter().map(|(i, _)| *i).collect();
-        assert_eq!(strip, [2, 0, 1], "{theme:?}: Paths moved before Layers");
+        assert_eq!(strip, [2, 0, 1, 3], "{theme:?}: Paths moved before Layers");
         assert_eq!(h.state().ui.dock.order(), order, "{theme:?}: a tab drag along the strip leaves the groups put");
         assert_eq!(last_rects(&h.ctx), rects);
         // The dragged tab is brought to the front; dockTabs keeps its original indices.
@@ -1061,11 +1063,11 @@ fn dragging_a_tab_reorders_the_group_and_the_order_persists() {
         let layers = tab_rect(&h, Group::Layers, 0).center();
         click(&mut h, layers);
         assert_eq!(h.state().ui.dock_tabs.layers, 0, "{theme:?}");
-        assert_eq!(strip_tabs(&h, Group::Layers).iter().map(|(i, _)| *i).collect::<Vec<_>>(), [2, 0, 1]);
+        assert_eq!(strip_tabs(&h, Group::Layers).iter().map(|(i, _)| *i).collect::<Vec<_>>(), [2, 0, 1, 3]);
 
         // UI state round trip (the control channel's ui.get / ui.set).
         let dock = serde_json::to_value(&h.state().ui.dock).unwrap();
-        assert_eq!(dock["tabOrder"], json!({"layers": ["Paths", "Layers", "Channels"]}));
+        assert_eq!(dock["tabOrder"], json!({"layers": ["Paths", "Layers", "Channels", "C3 Preview"]}));
         let ctx = h.ctx.clone();
         let (req, _rx) = crate::control::ControlRequest::new("ui.set", json!({"dock": {"tabOrder": {"layers": ["Channels"]}}}));
         crate::control::handle(h.state_mut(), &ctx, &req);
@@ -1092,7 +1094,7 @@ fn dragging_a_tab_reorders_the_group_and_the_order_persists() {
         assert!(h.state().ui.dock.tab_order.is_empty());
         crate::menus::invoke(h.state_mut(), &ctx, "window.workspace.select", json!({"name": "Paths First"})).unwrap();
         h.run_steps(3);
-        assert_eq!(strip_tabs(&h, Group::Layers).iter().map(|(i, _)| *i).collect::<Vec<_>>(), [2, 0, 1], "{theme:?}");
+        assert_eq!(strip_tabs(&h, Group::Layers).iter().map(|(i, _)| *i).collect::<Vec<_>>(), [2, 0, 1, 3], "{theme:?}");
     }
 }
 

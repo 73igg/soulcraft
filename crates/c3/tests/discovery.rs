@@ -1,5 +1,5 @@
 #![cfg(not(target_arch = "wasm32"))]
-use photocraft_c3::assets::ClientAssets;
+use photocraft_c3::assets::{ClientAssets, catalog_root, infer_root};
 use std::{fs, path::PathBuf, sync::atomic::AtomicBool};
 struct Folder(PathBuf);
 impl Folder {
@@ -127,4 +127,99 @@ fn quick_lookup_preserves_loose_overrides_and_reads_archives_only_on_demand() {
     f.write("c3/texture/001000000.c3", b"same basename, different resource");
     assert_eq!(quick.texture_path("c3/mesh/001000000.c3").unwrap(), "c3/mesh/001000000.c3");
     assert!(quick.read("c3/mesh/missing.c3", 100).is_err());
+}
+
+#[test]
+fn multipart_rows_remain_objects_and_shared_textures_are_not_alternative_meshes() {
+    let f = Folder::new("multipart");
+    f.write("ini/3dobj.ini", "1=c3/mesh/body.c3\n2=c3/mesh/trim.c3\n3=c3/mesh/other.c3\n");
+    f.write("ini/3dtexture.ini", "10=c3/texture/body.dds\n20=c3/texture/trim.dds\n");
+    f.write(
+        "ini/armor.ini",
+        "[outfit]\nPart=3\nMesh2=2\nTexture2=20\nMesh0=1\nTexture0=10\nMesh1=3\nTexture1=10\nMesh3=1\nTexture3=10\n[other]\nMesh0=3\nTexture0=10\n",
+    );
+    let assets = ClientAssets::quick(&f.0, &AtomicBool::new(false)).unwrap();
+    let objects = assets.objects_for_texture("body.dds");
+    assert_eq!(objects.len(), 2);
+    let object = assets.object("armor.ini:outfit").unwrap();
+    assert_eq!(object.parts.len(), 3);
+    assert_eq!(object.parts.iter().map(|p| p.slot).collect::<Vec<_>>(), [0, 1, 2]);
+    assert_eq!(object.parts[2].texture.as_deref(), Some("c3/texture/trim.dds"));
+    assert_eq!(assets.objects_for_texture("trim.dds").len(), 1);
+}
+
+#[test]
+fn multipart_effects_and_missing_registry_parts_keep_their_identity() {
+    let f = Folder::new("multipart-effects");
+    f.write("ini/3deffectobj.ini", "1=c3/effect/glow.c3\n");
+    f.write("ini/3dtexture.ini", "10=c3/texture/glow.dds\n");
+    f.write("ini/3deffect.ini", "[glow]\nEffectId0=1\nTextureId0=10\nEffectId1=999\nTextureId1=10\nEffectId999999999=1\nTextureId999999999=10\n");
+    let assets = ClientAssets::quick(&f.0, &AtomicBool::new(false)).unwrap();
+    let objects = assets.objects_for_texture("glow.dds");
+    assert_eq!(objects.len(), 1);
+    assert_eq!(objects[0].parts.len(), 2);
+    assert!(objects[0].parts[1].mesh.is_none());
+    assert!(objects[0].parts[1].note.as_ref().unwrap().contains("999"));
+}
+
+#[test]
+fn decompiled_textures_find_parent_registries_and_exact_object_paths_win() {
+    let f = Folder::new("parent-ini");
+    f.write("decomp/c3/effect/one/skin.dds", b"texture");
+    f.write("decomp/c3/effect/two/skin.dds", b"texture");
+    f.write("ini/3dobj.ini", "1=c3/mesh/body.c3\n2=c3/mesh/other.c3\n");
+    f.write("ini/3dtexture.ini", "10=c3/effect/one/skin.dds\n20=c3/effect/two/skin.dds\n");
+    f.write("ini/armor.ini", "[one]\nMesh0=1\nTexture0=10\n[two]\nMesh0=2\nTexture0=20\n");
+    let texture = f.0.join("decomp/c3/effect/two/skin.dds");
+    let expected = f.0.canonicalize().unwrap();
+    assert_eq!(infer_root(&texture).unwrap(), expected);
+    assert_eq!(catalog_root(&f.0.join("decomp")).unwrap(), expected);
+    let assets = ClientAssets::quick(&f.0.join("decomp"), &AtomicBool::new(false)).unwrap();
+    assert_eq!(assets.root, expected);
+    let objects = assets.objects_for_texture(&texture.to_string_lossy());
+    assert_eq!(objects.len(), 1);
+    assert_eq!(objects[0].id, "armor.ini:two");
+    assert!(assets.editable_path("../outside.dds").is_none());
+}
+
+#[test]
+fn large_valid_effect_catalog_does_not_block_an_unrelated_armor_object() {
+    let f = Folder::new("large-effects");
+    f.write("ini/3dobj.ini", "1=c3/mesh/body.c3\n");
+    f.write("ini/3dtexture.ini", "10=c3/texture/body.dds\n");
+    f.write("ini/armor.ini", "[outfit]\nMesh0=1\nTexture0=10\n");
+    f.write("ini/3deffect.ini", "Unused=0\n".repeat(576_988));
+    let assets = ClientAssets::quick(&f.0, &AtomicBool::new(false)).unwrap();
+    assert_eq!(assets.objects_for_texture("body.dds")[0].id, "armor.ini:outfit");
+    assert!(assets.warnings.is_empty());
+}
+
+#[test]
+fn malformed_optional_catalog_is_reported_without_disabling_other_objects() {
+    let f = Folder::new("bad-effects");
+    f.write("ini/3dobj.ini", "1=c3/mesh/body.c3\n");
+    f.write("ini/3dtexture.ini", "10=c3/texture/body.dds\n");
+    f.write("ini/armor.ini", "[outfit]\nMesh0=1\nTexture0=10\n");
+    f.write("ini/3deffect.ini", "x".repeat(16_385));
+    let assets = ClientAssets::quick(&f.0, &AtomicBool::new(false)).unwrap();
+    assert_eq!(assets.objects_for_texture("body.dds")[0].id, "armor.ini:outfit");
+    assert!(assets.warnings.iter().any(|warning| warning.contains("Skipped 3deffect.ini")));
+}
+
+#[test]
+fn declared_missing_parts_and_meshes_without_texture_fields_remain_inspectable() {
+    let f = Folder::new("missing-fields");
+    f.write("ini/3dobj.ini", "1=c3/mesh/body.c3\n2=c3/mesh/trim.c3\n");
+    f.write("ini/3dtexture.ini", "10=c3/texture/body.dds\n20=c3/texture/trim.dds\n");
+    f.write("ini/armor.ini", "[outfit]\nPart=4\nMesh0=1\nTexture0=10\nMesh1=2\nTexture2=20\n");
+    let assets = ClientAssets::quick(&f.0, &AtomicBool::new(false)).unwrap();
+    let objects = assets.objects_for_texture("body.dds");
+    let parts = &objects[0].parts;
+    assert_eq!(parts.len(), 4);
+    assert_eq!(parts[1].mesh.as_deref(), Some("c3/mesh/trim.c3"));
+    assert!(parts[1].texture.is_none() && parts[1].note.is_some());
+    assert!(parts[2].mesh.is_none());
+    assert_eq!(parts[2].texture.as_deref(), Some("c3/texture/trim.dds"));
+    assert!(parts[3].mesh.is_none() && parts[3].texture.is_none() && parts[3].note.is_some());
+    assert_eq!(assets.objects_for_texture("trim.dds").len(), 1);
 }

@@ -2833,3 +2833,8 @@ curves	Smooth	Suavizar
 	C3 View Preset	Vista C3 predefinida
 	C3 Preview Settings	Ajustes de vista previa C3
 	C3 Mesh Part Settings	Ajustes de partes de malla C3
+# Linked C3 objects
+	C3 Preview	Vista previa C3
+	C3 Linked Object	Objeto C3 vinculado
+	C3 Object Piece Visibility	Visibilidad de piezas del objeto C3
+	C3 Object Textures	Texturas del objeto C3

@@ -9,6 +9,7 @@ workspace = true
 
 [dependencies]
 photocraft-c3 = { workspace = true }
+image = { workspace = true }
 craft-ui = { workspace = true }
 photocraft-geom = { workspace = true }
 photocraft-color = { workspace = true }

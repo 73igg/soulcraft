@@ -3146,3 +3146,8 @@ curves	Smooth	Glätten
 	C3 View Preset	C3-Ansichtsvorgabe
 	C3 Preview Settings	C3-Vorschaueinstellungen
 	C3 Mesh Part Settings	C3-Meshteileinstellungen
+# Linked C3 objects
+	C3 Preview	C3-Vorschau
+	C3 Linked Object	Verknüpftes C3-Objekt
+	C3 Object Piece Visibility	Sichtbarkeit der C3-Objektteile
+	C3 Object Textures	C3-Objekttexturen

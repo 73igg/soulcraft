@@ -1780,6 +1780,7 @@ pub(crate) fn dock_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, group: crate
         (Group::History, _) => crate::comps_ui::panel(app, ui),
         (Group::Layers, 0) => layers(app, ui),
         (Group::Layers, 1) => channels(app, ui),
+        (Group::Layers, 3) => crate::c3_preview::panel(app, ui),
         (Group::Layers, _) => crate::vector_ui::paths_panel(app, ui),
     }
 }
@@ -2193,6 +2194,7 @@ fn opacity_row_layout(available: f32, label_width: f32, gap: f32) -> (f32, bool)
 }
 
 fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+    crate::c3_preview::texture_bar(app, ui);
     // A new active layer opens its parent groups and is scrolled into view (#152).
     let reveal = crate::layer_reveal::track(app, ui.ctx());
     let Some(st) = app.session.active() else {

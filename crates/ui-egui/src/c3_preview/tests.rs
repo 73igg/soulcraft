@@ -1,6 +1,55 @@
 use super::*;
 
 #[test]
+fn targa_preview_preserves_alpha_through_import_edit_and_export() {
+    for rle in [false, true] {
+        for bits in [24u8, 32] {
+            for top in [false, true] {
+                let mut bytes = vec![0u8; 18];
+                bytes[2] = if rle { 10 } else { 2 };
+                bytes[12] = 2;
+                bytes[14] = 1;
+                bytes[16] = bits;
+                bytes[17] = if bits == 32 { 8 } else { 0 } | if top { 32 } else { 0 };
+                if rle {
+                    bytes.push(1); // A raw packet containing two pixels.
+                }
+                for alpha in [0, 128] {
+                    bytes.extend([0, 0, 255]);
+                    if bits == 32 {
+                        bytes.push(alpha);
+                    }
+                }
+                let asset = TextureAsset { key: "skin.TGA".into(), path: None, bytes: Some(Arc::new(bytes.clone())), source: false, note: None };
+                assert_eq!(workspace::texture_pixels(&asset), Some(2));
+                let mut doc = photocraft_io::import("skin.tga", &bytes).unwrap().document;
+                if !rle && bits == 32 && top {
+                    let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+                    app.session.add_document(doc.clone(), Some("skin.TGA".into()));
+                    assert!(visible(&app));
+                }
+                let plain = texture_image(&doc, None, None, false).unwrap();
+                let preview = texture_image(&doc, None, None, true).unwrap();
+                assert_eq!(plain.pixels, [255, 0, 0, 255, 255, 0, 0, 255]);
+                assert_eq!(preview.pixels, if bits == 32 { vec![255, 0, 0, 0, 255, 0, 0, 128] } else { plain.pixels });
+                if bits == 32 {
+                    doc.channels[0].surface.write_pixel(0, 0, &[1.]);
+                    assert_eq!(texture_image(&doc, None, None, true).unwrap().pixels[3], 255);
+                    // Previewing must leave the editable alpha channel intact.
+                    assert_eq!(doc.channels.len(), 1);
+                    assert_eq!(doc.channels[0].surface.sample_channel(1, 0, 0), 128. / 255.);
+                    doc.layers[0].visible = false;
+                    assert_eq!(texture_image(&doc, None, None, true).unwrap().pixels, [255, 255, 255, 255, 255, 255, 255, 128]);
+                }
+                let exported = photocraft_io::export(&doc, "skin.tga", &Default::default()).unwrap();
+                let reopened = photocraft_io::import("skin.tga", &exported.bytes).unwrap().document;
+                assert_eq!(texture_image(&doc, None, None, true).unwrap().pixels, texture_image(&reopened, None, None, true).unwrap().pixels);
+            }
+        }
+    }
+}
+
+#[test]
 fn texture_preview_follows_visible_composite_at_all_depths() {
     use photocraft_color::PixelFormat;
     use photocraft_doc::{ColorMode, Layer, SampleType};
@@ -17,7 +66,7 @@ fn texture_preview_follows_visible_composite_at_all_depths() {
         let mut layer = Layer::new("red", photocraft_doc::LayerContent::Raster(surface));
         layer.visible = true;
         doc.layers.push(layer);
-        let image = texture_image(&doc, None, None).unwrap();
+        let image = texture_image(&doc, None, None, false).unwrap();
         assert_eq!(image.size, [2, 2]);
         assert_eq!(image.pixels, vec![255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255]);
     }
@@ -96,7 +145,7 @@ fn dds_mip_preview_uses_that_surfaces_dimensions() {
     let bytes = photocraft_io::export(&doc, "mips.dds", &options).unwrap().bytes;
     let imported = photocraft_io::import("mips.dds", &bytes).unwrap().document;
     let id = imported.metadata.dds.as_ref().unwrap().layers[1].0;
-    let image = texture_image(&imported, Some(id), None).unwrap();
+    let image = texture_image(&imported, Some(id), None, false).unwrap();
     assert_eq!(image.size, [8, 8]);
     assert!(image.pixels.as_chunks::<4>().0.iter().all(|p| *p == [0, 255, 0, 255]));
 }
@@ -120,6 +169,7 @@ fn mesh_arrives_before_textures_and_completion_preserves_part_choices() {
             candidates: Vec::new(),
             root: None,
             warnings: Vec::new(),
+            objects: Vec::new(),
             loaded: Some(Loaded {
                 model: model.clone(),
                 textures: vec![None],
@@ -127,6 +177,11 @@ fn mesh_arrives_before_textures_and_completion_preserves_part_choices() {
                 visible: vec![true],
                 path: "body.c3".into(),
                 warnings: Vec::new(),
+                pieces: Vec::new(),
+                assets: Vec::new(),
+                texture_slots: vec![None],
+                object_id: None,
+                title: "Body".into(),
             }),
         })
     };
@@ -154,7 +209,7 @@ fn stale_mesh_progress_cannot_replace_a_newer_selection() {
     let mut runtime = Runtime::default();
     runtime.docs.insert(id, DocPreview { generation: 2, status: "new selection".into(), ..Default::default() });
     runtime.discovery = Some(Discovery { id, generation: 1, rx, cancel: Arc::new(AtomicBool::new(false)) });
-    assert!(tx.send(Ok(Found { complete: true, candidates: Vec::new(), root: None, warnings: Vec::new(), loaded: None })).is_ok());
+    assert!(tx.send(Ok(Found { complete: true, candidates: Vec::new(), root: None, warnings: Vec::new(), objects: Vec::new(), loaded: None })).is_ok());
     runtime.poll();
     assert_eq!(runtime.docs.get(&id).unwrap().status, "new selection");
 }

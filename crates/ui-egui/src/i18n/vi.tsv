@@ -3635,3 +3635,8 @@ curves	Smooth	Làm mượt
 	C3 View Preset	Góc nhìn C3 đặt sẵn
 	C3 Preview Settings	Cài đặt xem trước C3
 	C3 Mesh Part Settings	Cài đặt phần lưới C3
+# Linked C3 objects
+	C3 Preview	Xem trước C3
+	C3 Linked Object	Đối tượng C3 được liên kết
+	C3 Object Piece Visibility	Hiển thị các phần đối tượng C3
+	C3 Object Textures	Kết cấu đối tượng C3

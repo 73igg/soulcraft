@@ -6,6 +6,7 @@ pub struct Image {
     pub size: [u32; 2],
     pub pixels: Vec<u8>,
 }
+#[derive(Clone)]
 struct Texture {
     texture: wgpu::Texture,
     bind: wgpu::BindGroup,
@@ -28,11 +29,14 @@ pub struct Gpu {
     opaque: wgpu::RenderPipeline,
     transparent: wgpu::RenderPipeline,
     edited: Option<Texture>,
+    fallback: Option<Texture>,
     textures: Vec<Option<Texture>>,
     geometries: Vec<Option<Geometry>>,
     model: Option<Arc<Model>>,
     target: Option<(wgpu::Texture, wgpu::TextureView, wgpu::TextureView, egui::TextureId, [u32; 2])>,
     sorted_rotation: Option<([f32; 4], u8)>,
+    live: std::collections::HashMap<usize, (Vec<usize>, Texture)>,
+    framing: Option<([f32; 3], [f32; 3])>,
 }
 fn fbytes(values: impl IntoIterator<Item = f32>) -> Vec<u8> {
     values.into_iter().flat_map(f32::to_ne_bytes).collect()
@@ -153,11 +157,14 @@ impl Gpu {
             opaque,
             transparent,
             edited: None,
+            fallback: None,
             textures: Vec::new(),
             geometries: Vec::new(),
             model: None,
             target: None,
             sorted_rotation: None,
+            live: Default::default(),
+            framing: None,
         }
     }
     fn texture(&self, image: &Image) -> Texture {
@@ -192,13 +199,14 @@ impl Gpu {
         );
     }
     pub fn upload(&mut self, image: &Image) {
-        if let Some(t) = self.edited.as_ref().filter(|t| t.size == image.size) {
+        if let Some(t) = self.fallback.as_ref().filter(|t| t.size == image.size) {
             self.write_texture(&t.texture, image);
         } else {
-            self.edited = Some(self.texture(image));
+            self.fallback = Some(self.texture(image));
         }
+        self.edited = self.fallback.clone();
     }
-    pub fn model(&mut self, model: Arc<Model>, textures: &[Option<Image>]) {
+    pub fn model(&mut self, model: Arc<Model>, textures: &[Option<Arc<Image>>]) {
         self.geometries = model
             .meshes
             .iter()
@@ -226,19 +234,63 @@ impl Gpu {
                 })
             })
             .collect();
-        let neutral = Image { size: [1, 1], pixels: vec![180, 180, 180, 255] };
-        self.textures = textures.iter().map(|i| Some(self.texture(i.as_ref().unwrap_or(&neutral)))).collect();
+        self.live.clear();
+        self.framing = None;
+        self.secondary_textures(textures);
         self.model = Some(model);
         self.sorted_rotation = None;
     }
-    pub fn secondary_textures(&mut self, textures: &[Option<Image>]) {
-        self.textures = textures.iter().map(|image| image.as_ref().map(|image| self.texture(image))).collect();
+    pub fn secondary_textures(&mut self, textures: &[Option<Arc<Image>>]) {
+        let neutral = self.texture(&Image { size: [1, 1], pixels: vec![180, 180, 180, 255] });
+        let mut shared = std::collections::HashMap::new();
+        self.textures = textures
+            .iter()
+            .map(|image| {
+                Some(match image {
+                    Some(image) => shared.entry(Arc::as_ptr(image)).or_insert_with(|| self.texture(image)).clone(),
+                    None => neutral.clone(),
+                })
+            })
+            .collect();
+        for (slots, texture) in self.live.values() {
+            for index in slots {
+                if let Some(slot) = self.textures.get_mut(*index) {
+                    *slot = Some(texture.clone());
+                }
+            }
+        }
+    }
+    pub fn upload_slots(&mut self, asset: usize, slots: &[usize], image: &Image) {
+        let texture = if let Some((_, texture)) = self.live.get(&asset).filter(|(_, texture)| texture.size == image.size) {
+            self.write_texture(&texture.texture, image);
+            texture.clone()
+        } else {
+            self.texture(image)
+        };
+        for index in slots {
+            if let Some(slot) = self.textures.get_mut(*index) {
+                *slot = Some(texture.clone());
+            }
+        }
+        self.live.insert(asset, (slots.to_vec(), texture));
+    }
+    pub fn activate_texture(&mut self, asset: usize) {
+        if let Some((_, texture)) = self.live.get(&asset) {
+            self.edited = Some(texture.clone());
+        }
+    }
+    pub fn forget_texture(&mut self, asset: usize, original: &[Option<Arc<Image>>]) {
+        self.live.remove(&asset);
+        self.secondary_textures(original);
     }
     pub fn clear(&mut self) {
         self.model = None;
         self.geometries.clear();
         self.textures.clear();
         self.edited = None;
+        self.fallback = None;
+        self.live.clear();
+        self.framing = None;
     }
     pub fn draw(&mut self, size: [u32; 2], state: &super::State, selected: &[bool], visible: &[bool]) -> Option<egui::TextureId> {
         let (camera, lit, alpha, flip_v) = (&state.camera, state.lit, state.alpha, state.flip_v);
@@ -296,6 +348,8 @@ impl Gpu {
             min = model.min;
             max = model.max;
         }
+        // Keep the initial composition while isolating pieces or switching textures.
+        let (min, max) = *self.framing.get_or_insert((min, max));
         let center = std::array::from_fn::<_, 3, _>(|i| (min[i] + max[i]) * 0.5);
         let radius = photocraft_c3::math::sub(max, min).iter().map(|v| v * v).sum::<f32>().sqrt().max(0.0001) * 0.5;
         let uniforms = fbytes(

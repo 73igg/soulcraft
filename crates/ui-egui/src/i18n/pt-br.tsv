@@ -3938,3 +3938,8 @@ layerLabel	No Color	Sem cor
 	C3 View Preset	Predefinição de visualização C3
 	C3 Preview Settings	Configurações da prévia C3
 	C3 Mesh Part Settings	Configurações das partes da malha C3
+# Linked C3 objects
+	C3 Preview	Prévia C3
+	C3 Linked Object	Objeto C3 vinculado
+	C3 Object Piece Visibility	Visibilidade das peças do objeto C3
+	C3 Object Textures	Texturas do objeto C3

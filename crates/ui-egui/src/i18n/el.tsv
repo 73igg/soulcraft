@@ -3846,3 +3846,8 @@ curves	Smooth	Εξομάλυνση
 	C3 View Preset	Προεπιλογή προβολής C3
 	C3 Preview Settings	Ρυθμίσεις προεπισκόπησης C3
 	C3 Mesh Part Settings	Ρυθμίσεις τμημάτων πλέγματος C3
+# Linked C3 objects
+	C3 Preview	Προεπισκόπηση C3
+	C3 Linked Object	Συνδεδεμένο αντικείμενο C3
+	C3 Object Piece Visibility	Ορατότητα τμημάτων αντικειμένου C3
+	C3 Object Textures	Υφές αντικειμένου C3

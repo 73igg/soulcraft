@@ -2758,3 +2758,8 @@ curves	Smooth	平滑
 	C3 View Preset	C3视图预设
 	C3 Preview Settings	C3预览设置
 	C3 Mesh Part Settings	C3网格部件设置
+# Linked C3 objects
+	C3 Preview	C3 预览
+	C3 Linked Object	关联的 C3 对象
+	C3 Object Piece Visibility	C3 对象部件可见性
+	C3 Object Textures	C3 对象纹理

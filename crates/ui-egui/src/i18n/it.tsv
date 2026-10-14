@@ -4111,3 +4111,8 @@ navigator	Zoom	Zoom
 	C3 View Preset	Vista C3 predefinita
 	C3 Preview Settings	Impostazioni anteprima C3
 	C3 Mesh Part Settings	Impostazioni parti della mesh C3
+# Linked C3 objects
+	C3 Preview	Anteprima C3
+	C3 Linked Object	Oggetto C3 collegato
+	C3 Object Piece Visibility	Visibilità parti oggetto C3
+	C3 Object Textures	Texture oggetto C3

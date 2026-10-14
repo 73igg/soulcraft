@@ -2,9 +2,14 @@
 mod camera;
 mod gpu;
 #[cfg(test)]
+mod multipart_tests;
+#[cfg(not(target_arch = "wasm32"))]
+mod scene_worker;
+#[cfg(test)]
 mod tests;
 #[cfg(not(target_arch = "wasm32"))]
 mod worker;
+mod workspace;
 
 use crate::{PhotocraftApp, theme::Tokens};
 pub use camera::Camera;
@@ -20,6 +25,7 @@ use std::{
         mpsc::{self, Receiver},
     },
 };
+pub(crate) use workspace::{arranged_cells, panel, texture_bar, tiled};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -38,6 +44,8 @@ pub struct State {
     pub up_axis: u8,
     /// None = the visible image, Some(id) = one DDS surface/layer.
     pub texture_layer: Option<u64>,
+    /// Add the object list to an older customized dock once, preserving its layout.
+    pub object_tab_added: bool,
 }
 impl Default for State {
     fn default() -> Self {
@@ -52,6 +60,7 @@ impl Default for State {
             flip_v: false,
             up_axis: 0,
             texture_layer: None,
+            object_tab_added: false,
         }
     }
 }
@@ -61,13 +70,36 @@ pub(super) struct Candidate {
     pub path: String,
     pub reason: String,
 }
+#[derive(Clone)]
 pub(super) struct Loaded {
     pub model: Arc<photocraft_c3::Model>,
-    pub textures: Vec<Option<Image>>,
+    pub textures: Vec<Option<Arc<Image>>>,
     pub selected: Vec<bool>,
     pub visible: Vec<bool>,
     pub path: String,
     pub warnings: Vec<String>,
+    pub pieces: Vec<Piece>,
+    pub assets: Vec<TextureAsset>,
+    pub texture_slots: Vec<Option<usize>>,
+    pub object_id: Option<String>,
+    pub title: String,
+}
+#[derive(Clone)]
+pub(super) struct Piece {
+    pub key: String,
+    pub path: String,
+    pub range: std::ops::Range<usize>,
+    pub visible: bool,
+    pub note: Option<String>,
+    pub textures: Vec<usize>,
+}
+#[derive(Clone)]
+pub(super) struct TextureAsset {
+    pub key: String,
+    pub path: Option<String>,
+    pub bytes: Option<Arc<Vec<u8>>>,
+    pub source: bool,
+    pub note: Option<String>,
 }
 pub(super) struct Found {
     pub complete: bool,
@@ -75,6 +107,7 @@ pub(super) struct Found {
     pub loaded: Option<Loaded>,
     pub root: Option<String>,
     pub warnings: Vec<String>,
+    pub objects: Vec<(String, String)>,
 }
 type FoundResult = Result<Found, String>;
 struct Discovery {
@@ -90,6 +123,7 @@ struct TextureKey {
     preview: u64,
     display: u64,
     layer: Option<u64>,
+    targa: bool,
 }
 struct TextureJob {
     key: TextureKey,
@@ -97,11 +131,12 @@ struct TextureJob {
 }
 #[derive(Default)]
 struct DocPreview {
+    source_doc: Option<DocId>,
     source: String,
     root: Option<String>,
     candidates: Vec<Candidate>,
     loaded: Option<Loaded>,
-    image: Option<Image>,
+    image: Option<Arc<Image>>,
     key: Option<TextureKey>,
     generation: u64,
     pinned: bool,
@@ -110,6 +145,12 @@ struct DocPreview {
     layer: Option<u64>,
     status: String,
     warnings: Vec<String>,
+    objects: Vec<(String, String)>,
+    texture_docs: HashMap<usize, DocId>,
+    hidden_textures: std::collections::HashSet<usize>,
+    tiled: bool,
+    opening_textures: std::collections::HashSet<usize>,
+    saved_textures: HashMap<usize, (DocId, u64, Arc<Image>)>,
 }
 #[derive(Default)]
 pub(crate) struct Runtime {
@@ -122,6 +163,9 @@ pub(crate) struct Runtime {
     texture_job: Option<TextureJob>,
     pub rect: Option<egui::Rect>,
     error: Option<String>,
+    owners: HashMap<DocId, DocId>,
+    uploaded_keys: HashMap<DocId, TextureKey>,
+    edited_doc: Option<DocId>,
 }
 impl Drop for Runtime {
     fn drop(&mut self) {
@@ -134,6 +178,8 @@ impl Runtime {
     pub(crate) fn release_gpu(&mut self) {
         self.gpu = None;
         self.gpu_doc = None;
+        self.uploaded_keys.clear();
+        self.edited_doc = None;
     }
     pub fn set_wgpu(&mut self, rs: eframe::egui_wgpu::RenderState) {
         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| gpu::Gpu::new(rs))) {
@@ -150,8 +196,27 @@ impl Runtime {
         }
     }
     fn discover(&mut self, id: DocId, source: String, root: Option<String>, manual: Option<(String, Vec<u8>)>, ctx: &egui::Context) {
+        self.discover_choice(id, source, root, manual, None, ctx);
+    }
+    fn owner(&self, id: DocId) -> DocId {
+        self.owners.get(&id).copied().unwrap_or(id)
+    }
+    fn discover_choice(
+        &mut self,
+        id: DocId,
+        source: String,
+        root: Option<String>,
+        manual: Option<(String, Vec<u8>)>,
+        object: Option<String>,
+        ctx: &egui::Context,
+    ) {
         self.stop_discovery();
+        let source_doc = self.active.filter(|active| self.owner(*active) == id).unwrap_or(id);
         let p = self.docs.entry(id).or_default();
+        if p.source != source || p.source_doc.is_none() {
+            p.source_doc = Some(source_doc);
+        }
+        p.source = source.clone();
         p.generation = p.generation.saturating_add(1);
         p.pending_textures = true;
         p.status = if manual.is_some() { "Loading C3 model…" } else { "Finding matching C3 models…" }.into();
@@ -164,7 +229,7 @@ impl Runtime {
             let ctx = ctx.clone();
             let spawn = std::thread::Builder::new().name("c3 discovery".into()).spawn(move || {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    worker::discover(&source, root.as_deref(), manual, cancel.as_ref(), |found| {
+                    worker::discover(&source, root.as_deref(), manual, object.as_deref(), cancel.as_ref(), |found| {
                         let _ = tx.send(Ok(found));
                         ctx.request_repaint();
                     })
@@ -181,7 +246,7 @@ impl Runtime {
         }
         #[cfg(target_arch = "wasm32")]
         {
-            let _ = (source, root, cancel.as_ref(), ctx);
+            let _ = (source, root, object, cancel.as_ref(), ctx);
             let result = manual.ok_or_else(|| "Select a C3 model with Load mesh; automatic client discovery is available on desktop".into()).and_then(
                 |(path, bytes)| {
                     let model = Arc::new(photocraft_c3::decode(&bytes).map_err(|e| e.to_string())?);
@@ -191,6 +256,7 @@ impl Runtime {
                         candidates: Vec::new(),
                         root: None,
                         warnings: Vec::new(),
+                        objects: Vec::new(),
                         loaded: Some(Loaded {
                             selected: vec![true; count],
                             visible: visibility(&model),
@@ -198,6 +264,11 @@ impl Runtime {
                             warnings: model.warnings.clone(),
                             model,
                             path,
+                            pieces: Vec::new(),
+                            assets: Vec::new(),
+                            texture_slots: vec![None; count],
+                            object_id: None,
+                            title: "Selected C3".into(),
                         }),
                     })
                 },
@@ -220,10 +291,13 @@ impl Runtime {
                     match result {
                         Ok(found) => {
                             p.candidates = found.candidates;
+                            p.objects = found.objects;
                             p.root = found.root;
                             p.warnings = found.warnings;
                             p.status = if !complete {
                                 "Loading other-part textures…"
+                            } else if found.loaded.as_ref().is_some_and(|loaded| loaded.model.meshes.is_empty()) {
+                                "INI object found; its C3 geometry is unavailable"
                             } else if found.loaded.is_some() {
                                 "Live texture preview"
                             } else {
@@ -231,6 +305,27 @@ impl Runtime {
                             }
                             .into();
                             if let Some(mut loaded) = found.loaded {
+                                if p.loaded
+                                    .as_ref()
+                                    .is_some_and(|old| old.assets.iter().map(|asset| &asset.key).ne(loaded.assets.iter().map(|asset| &asset.key)))
+                                {
+                                    p.texture_docs.clear();
+                                    p.saved_textures.clear();
+                                    p.opening_textures.clear();
+                                    p.hidden_textures.clear();
+                                }
+                                if let Some(previous) = &p.loaded {
+                                    for piece in &mut loaded.pieces {
+                                        if let Some(old) = previous.pieces.iter().find(|old| old.key == piece.key) {
+                                            piece.visible = old.visible;
+                                        }
+                                    }
+                                }
+                                for (slot, texture) in loaded.texture_slots.iter().zip(&mut loaded.textures) {
+                                    if let Some((_, _, saved)) = slot.and_then(|slot| p.saved_textures.get(&slot)) {
+                                        *texture = Some(saved.clone());
+                                    }
+                                }
                                 p.warnings.extend(loaded.warnings.iter().cloned());
                                 let same_model = p.loaded.as_ref().is_some_and(|old| Arc::ptr_eq(&old.model, &loaded.model));
                                 let same_parts = p.loaded.as_ref().is_some_and(|old| {
@@ -270,13 +365,8 @@ impl Runtime {
                 if let Some(p) = self.docs.get_mut(&job.key.id) {
                     match result {
                         Ok(image) => {
-                            p.image = Some(image);
+                            p.image = Some(Arc::new(image));
                             p.key = Some(job.key);
-                            if self.gpu_doc == Some(job.key.id)
-                                && let (Some(gpu), Some(image)) = (&mut self.gpu, &p.image)
-                            {
-                                gpu.upload(image);
-                            }
                         }
                         Err(e) => {
                             p.key = Some(job.key);
@@ -284,6 +374,8 @@ impl Runtime {
                         }
                     }
                 }
+                let uploaded_id = job.key.id;
+                workspace::upload_document(self, uploaded_id);
                 self.texture_job = None;
             }
         }
@@ -330,7 +422,7 @@ pub(super) fn visibility(model: &photocraft_c3::Model) -> Vec<bool> {
     sockets.into_iter().map(|s| !s || !geometry).collect()
 }
 
-fn texture_image(doc: &Document, layer: Option<u64>, display: Option<&photocraft_engine::display_color::CanvasDisplay>) -> Result<Image, String> {
+fn texture_image(doc: &Document, layer: Option<u64>, display: Option<&photocraft_engine::display_color::CanvasDisplay>, targa: bool) -> Result<Image, String> {
     if doc.size.width == 0 || doc.size.height == 0 {
         return Err("The texture has zero size".into());
     }
@@ -360,18 +452,54 @@ fn texture_image(doc: &Document, layer: Option<u64>, display: Option<&photocraft
     };
     let scale = (2048.0 / doc.size.width.max(doc.size.height) as f64).min(1.0);
     let size = [(doc.size.width as f64 * scale).round().max(1.) as u32, (doc.size.height as f64 * scale).round().max(1.) as u32];
-    let buf = photocraft_compose::render_reduced(doc, size[0], size[1]);
-    let image = match display {
+    let targa_alpha = if targa && !matches!(doc.mode, photocraft_doc::ColorMode::Grayscale | photocraft_doc::ColorMode::Bitmap) {
+        let mut channels = doc.channels.iter().filter(|channel| channel.spot.is_none());
+        channels.next().filter(|_| channels.next().is_none())
+    } else {
+        None
+    };
+    let mut buf = photocraft_compose::render_reduced(doc, size[0], size[1]);
+    if targa_alpha.is_some() {
+        // With an explicit Targa alpha channel, export mattes layer transparency
+        // over white before attaching that channel. Composite in float precision.
+        for [r, g, b, a] in &mut buf.px {
+            let white = 1. - *a;
+            *r += white;
+            *g += white;
+            *b += white;
+            *a = 1.;
+        }
+    }
+    let mut image = match display {
         Some(d) => d.to_rgba8(&buf),
         None => buf.to_rgba8(),
     };
+    // Targa opens its alpha as a separate channel. Match Targa export without
+    // changing the document, its layers, or the colours stored under alpha zero.
+    if let Some(channel) = targa_alpha {
+        for (i, pixel) in image.pixels.as_chunks_mut::<4>().0.iter_mut().enumerate() {
+            let x = ((i as u32 % size[0]) as f64 + 0.5) * f64::from(doc.size.width) / f64::from(size[0]) - 0.5;
+            let y = ((i as u32 / size[0]) as f64 + 0.5) * f64::from(doc.size.height) / f64::from(size[1]) - 0.5;
+            let x = x.clamp(0., f64::from(doc.size.width - 1));
+            let y = y.clamp(0., f64::from(doc.size.height - 1));
+            let (x0, y0) = (x.floor() as i32, y.floor() as i32);
+            let (x1, y1) = ((x0 + 1).min(doc.size.width as i32 - 1), (y0 + 1).min(doc.size.height as i32 - 1));
+            let (fx, fy) = ((x - f64::from(x0)) as f32, (y - f64::from(y0)) as f32);
+            let top = channel.surface.sample_channel(x0, y0, 0) * (1. - fx) + channel.surface.sample_channel(x1, y0, 0) * fx;
+            let bottom = channel.surface.sample_channel(x0, y1, 0) * (1. - fx) + channel.surface.sample_channel(x1, y1, 0) * fx;
+            if let Some(alpha) = pixel.last_mut() {
+                *alpha = ((top * (1. - fy) + bottom * fy).clamp(0., 1.) * 255.).round() as u8;
+            }
+        }
+    }
     Ok(Image { size, pixels: image.pixels })
 }
 
 fn upkeep(app: &mut PhotocraftApp, ctx: &egui::Context) {
+    workspace::sync_documents(app);
     let open: Vec<_> = app.session.documents().iter().map(|d| d.doc.id).collect();
-    app.c3_preview.docs.retain(|id, _| open.contains(id));
-    if app.c3_preview.discovery.as_ref().is_some_and(|d| !open.contains(&d.id)) {
+    app.c3_preview.docs.retain(|id, p| open.contains(id) || p.texture_docs.values().any(|id| open.contains(id)));
+    if app.c3_preview.discovery.as_ref().is_some_and(|d| !app.c3_preview.docs.contains_key(&d.id)) {
         app.c3_preview.stop_discovery();
     }
     let active = app.session.active().map(|d| (d.doc.id, d.path.clone().unwrap_or_else(|| d.doc.name.clone())));
@@ -383,45 +511,68 @@ fn upkeep(app: &mut PhotocraftApp, ctx: &egui::Context) {
         }
         return;
     };
+    let owner = app.c3_preview.owner(id);
     if app.c3_preview.active != Some(id) {
         if let Some(previous) = app.c3_preview.active.and_then(|id| app.c3_preview.docs.get_mut(&id)) {
-            previous.camera = app.ui.c3_preview.camera.clone();
             previous.layer = app.ui.c3_preview.texture_layer;
         }
+        let previous_owner = app.c3_preview.active.map(|id| app.c3_preview.owner(id));
+        if let Some(previous) = previous_owner.and_then(|id| app.c3_preview.docs.get_mut(&id)) {
+            previous.camera = app.ui.c3_preview.camera.clone();
+        }
+        let camera = app.c3_preview.docs.get(&owner).map(|preview| preview.camera.clone()).unwrap_or_default();
         let first = !app.c3_preview.docs.contains_key(&id);
         let p = app.c3_preview.docs.entry(id).or_default();
-        app.ui.c3_preview.camera = p.camera.clone();
+        if previous_owner != Some(owner) {
+            app.ui.c3_preview.camera = camera;
+        }
         app.ui.c3_preview.texture_layer = p.layer;
         if p.source.is_empty() {
             p.source = source.clone();
         }
         app.c3_preview.active = Some(id);
-        app.c3_preview.gpu_doc = None;
-        if first && app.ui.c3_preview.automatic && (app.session.active().is_some_and(|d| d.path.is_some()) || app.ui.c3_preview.client_root.is_some()) {
+        if app.c3_preview.gpu_doc != Some(owner) {
+            app.c3_preview.gpu_doc = None;
+        }
+        if first
+            && owner == id
+            && app.ui.c3_preview.automatic
+            && (app.session.active().is_some_and(|d| d.path.is_some()) || app.ui.c3_preview.client_root.is_some())
+        {
             app.c3_preview.discover(id, source, app.ui.c3_preview.client_root.clone(), None, ctx);
-        } else if app.c3_preview.docs.get(&id).is_some_and(|p| p.pending_textures) && !app.c3_preview.discovery.as_ref().is_some_and(|d| d.id == id) {
+        } else if app.c3_preview.docs.get(&owner).is_some_and(|p| p.pending_textures) && !app.c3_preview.discovery.as_ref().is_some_and(|d| d.id == owner) {
             // Switching tabs cancels the old worker. Resume its selected model
             // when returning so a partial preview can finish its other textures.
-            let p = app.c3_preview.docs.get(&id);
+            let p = app.c3_preview.docs.get(&owner);
             let mesh = p.and_then(|p| p.loaded.as_ref()).map(|m| (m.path.clone(), Vec::new()));
+            let object = p.and_then(|p| p.loaded.as_ref()).and_then(|loaded| loaded.object_id.clone());
+            let source = p.map(|preview| preview.source.clone()).unwrap_or(source);
             let root = p.and_then(|p| p.root.clone()).or_else(|| app.ui.c3_preview.client_root.clone());
             if mesh.is_some() || app.ui.c3_preview.automatic {
-                app.c3_preview.discover(id, source, root, mesh, ctx);
+                let mesh = if object.is_some() { None } else { mesh };
+                app.c3_preview.discover_choice(owner, source, root, mesh, object, ctx);
             }
         }
     }
     app.c3_preview.poll();
-    if app.c3_preview.gpu_doc != Some(id)
-        && let Some(p) = app.c3_preview.docs.get(&id)
+    if app.c3_preview.gpu_doc != Some(owner)
+        && let Some(p) = app.c3_preview.docs.get(&owner)
         && let (Some(gpu), Some(loaded)) = (&mut app.c3_preview.gpu, &p.loaded)
     {
         gpu.model(loaded.model.clone(), &loaded.textures);
+        app.c3_preview.uploaded_keys.clear();
+        app.c3_preview.edited_doc = None;
         if let Some(image) = &p.image {
             gpu.upload(image);
         }
-        app.c3_preview.gpu_doc = Some(id);
+        app.c3_preview.gpu_doc = Some(owner);
+        let linked: Vec<_> = p.texture_docs.values().copied().collect();
+        for id in linked {
+            workspace::upload_document(&mut app.c3_preview, id);
+        }
     }
-    let has_model = app.c3_preview.docs.get(&id).is_some_and(|p| p.loaded.is_some());
+    workspace::upload_document(&mut app.c3_preview, id);
+    let has_model = app.c3_preview.docs.get(&owner).is_some_and(|p| p.loaded.is_some());
     if !has_model || app.c3_preview.texture_job.is_some() {
         return;
     }
@@ -434,7 +585,15 @@ fn upkeep(app: &mut PhotocraftApp, ctx: &egui::Context) {
     };
     let revision = st.revision;
     let (display, display_key) = crate::canvas::canvas_display(app, &doc, None);
-    let key = TextureKey { id, revision, preview, display: display_key, layer: app.ui.c3_preview.texture_layer };
+    let is_targa = |path: &str| photocraft_codecs::from_extension(path) == Some(photocraft_codecs::Format::Tga);
+    let targa = st.path.as_deref().is_some_and(is_targa)
+        || is_targa(&doc.name)
+        || app.c3_preview.docs.get(&owner).is_some_and(|scene| {
+            scene.texture_docs.iter().any(|(slot, document)| {
+                *document == id && scene.loaded.as_ref().and_then(|loaded| loaded.assets.get(*slot)).is_some_and(|asset| is_targa(&asset.key))
+            })
+        });
+    let key = TextureKey { id, revision, preview, display: display_key, layer: app.ui.c3_preview.texture_layer, targa };
     if app.c3_preview.docs.get(&id).is_some_and(|p| p.key == Some(key)) {
         return;
     }
@@ -443,7 +602,7 @@ fn upkeep(app: &mut PhotocraftApp, ctx: &egui::Context) {
     {
         let ctx = ctx.clone();
         if let Err(e) = std::thread::Builder::new().name("c3 live texture".into()).spawn(move || {
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| texture_image(&doc, key.layer, display.as_deref())))
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| texture_image(&doc, key.layer, display.as_deref(), key.targa)))
                 .unwrap_or_else(|_| Err("Texture preview failed safely".into()));
             let _ = tx.send(result);
             ctx.request_repaint();
@@ -457,7 +616,7 @@ fn upkeep(app: &mut PhotocraftApp, ctx: &egui::Context) {
     }
     #[cfg(target_arch = "wasm32")]
     {
-        let _ = tx.send(texture_image(&doc, key.layer, display.as_deref()));
+        let _ = tx.send(texture_image(&doc, key.layer, display.as_deref(), key.targa));
     }
     app.c3_preview.texture_job = Some(TextureJob { key, rx });
 }
@@ -476,6 +635,13 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     }
     persist(app, ui.ctx());
     if !app.ui.c3_preview.enabled {
+        // The object workspace remains usable when only the 3D pane is hidden.
+        workspace::sync_documents(app);
+        app.c3_preview.poll();
+        if workspace::scene_id(app).and_then(|id| app.c3_preview.docs.get(&id)).is_some_and(|preview| preview.loaded.is_some()) {
+            let ctx = ui.ctx().clone();
+            upkeep(app, &ctx);
+        }
         app.c3_preview.rect = None;
         return;
     }
@@ -514,12 +680,13 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 }
                 if app.c3_preview.discovery.is_some() && ui.small_button("Cancel").clicked() {
                     app.c3_preview.stop_discovery();
-                    if let Some(p) = app.session.active().and_then(|d| app.c3_preview.docs.get_mut(&d.doc.id)) {
+                    if let Some(p) = app.session.active().map(|d| app.c3_preview.owner(d.doc.id)).and_then(|id| app.c3_preview.docs.get_mut(&id)) {
                         p.status = "Model lookup cancelled".into();
+                        p.pending_textures = false;
                     }
                 }
             });
-            let id = app.session.active().map(|d| d.doc.id);
+            let id = workspace::scene_id(app);
             if let Some(p) = id.and_then(|id| app.c3_preview.docs.get(&id)) {
                 let status = p.status.clone();
                 let warnings = p.warnings.clone();
@@ -612,7 +779,12 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             }
             if let Some(loaded) = id.and_then(|id| app.c3_preview.docs.get_mut(&id)).and_then(|p| p.loaded.as_mut()) {
                 ui.collapsing("Mesh parts", |ui| {
-                    ui.label("Eye = visible; Edit = receives the current texture.");
+                    let linked = loaded.object_id.is_some();
+                    ui.label(if linked {
+                        "Textures follow their INI bindings. File visibility is in C3 Preview."
+                    } else {
+                        "Eye = visible; Override = use the active texture on this part."
+                    });
                     egui::ScrollArea::vertical().id_salt("c3-parts-scroll").max_height(180.).show(ui, |ui| {
                         for ((mesh, visible), selected) in loaded.model.meshes.iter().zip(&mut loaded.visible).zip(&mut loaded.selected) {
                             if mesh.indices.is_empty() {
@@ -620,7 +792,11 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                             }
                             ui.horizontal(|ui| {
                                 ui.checkbox(visible, "Eye");
-                                ui.checkbox(selected, "Edit");
+                                if !linked {
+                                    ui.checkbox(selected, "Override").on_hover_text(
+                                        "Override this part's assigned material with the active texture. Linked materials keep their live edits.",
+                                    );
+                                }
                                 let width = ui.available_width();
                                 crate::widgets::elided_label(ui, &mesh.name, width).on_hover_text(&mesh.texture);
                             });
@@ -670,7 +846,7 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 && let Some(gpu) = app.c3_preview.gpu.as_mut()
             {
                 let size = [(rect.width() * ctx.pixels_per_point()).ceil() as u32, (rect.height() * ctx.pixels_per_point()).ceil() as u32];
-                if let Some(texture) = gpu.draw(size, state, &loaded.selected, &loaded.visible) {
+                if let Some(texture) = gpu.draw(size, state, &loaded.selected, &workspace::effective_visibility(loaded)) {
                     painter.image(texture, rect, egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1., 1.)), egui::Color32::WHITE);
                     rendered = true;
                 }
@@ -719,7 +895,11 @@ fn persist(app: &PhotocraftApp, ctx: &egui::Context) {
 pub(crate) fn visible(app: &PhotocraftApp) -> bool {
     app.ui.c3_preview.enabled
         && (app.ui.c3_preview.show_for_all
-            || app.session.active().is_some_and(|d| d.doc.metadata.dds.is_some() || app.c3_preview.docs.get(&d.doc.id).is_some_and(|p| p.loaded.is_some())))
+            || app.session.active().is_some_and(|d| {
+                d.doc.metadata.dds.is_some()
+                    || photocraft_codecs::from_extension(d.path.as_deref().unwrap_or(&d.doc.name)) == Some(photocraft_codecs::Format::Tga)
+                    || app.c3_preview.docs.get(&app.c3_preview.owner(d.doc.id)).is_some_and(|p| p.loaded.is_some())
+            }))
 }
 fn report(app: &mut PhotocraftApp, result: Result<Value, String>) {
     if let Err(e) = result {
@@ -728,7 +908,12 @@ fn report(app: &mut PhotocraftApp, result: Result<Value, String>) {
     }
 }
 fn pick_mesh(app: &mut PhotocraftApp, ctx: &egui::Context) -> Result<Value, String> {
-    let id = app.session.active().map(|d| d.doc.id).ok_or_else(|| "Open a texture first".to_string())?;
+    let id = workspace::scene_id(app).ok_or_else(|| "Open a texture first".to_string())?;
+    let (texture_id, source) = app
+        .session
+        .active()
+        .map(|state| (state.doc.id, state.path.clone().unwrap_or_else(|| state.doc.name.clone())))
+        .ok_or_else(|| "Open a texture first".to_string())?;
     let ctx = ctx.clone();
     let initial_dir = app.ui.c3_preview.client_root.clone().or_else(|| crate::file_dialog::last_used_dir(&app.ui.recent_files));
     app.ask_file(crate::file_dialog::FileDialogRequest::Open { multiple: false, initial_dir, extensions: Some(vec!["c3".into()]) }, move |app, answer| {
@@ -740,14 +925,16 @@ fn pick_mesh(app: &mut PhotocraftApp, ctx: &egui::Context) -> Result<Value, Stri
         if bytes.len() > photocraft_c3::MAX_FILE_BYTES {
             return Err("C3 exceeds the 128 MiB preview limit".into());
         }
-        if !app.session.documents().iter().any(|d| d.doc.id == id) {
+        if !app.session.documents().iter().any(|d| d.doc.id == texture_id) {
             return Err("The texture document was closed".into());
         }
-        let source = app.c3_preview.docs.get(&id).map(|p| p.source.clone()).unwrap_or_default();
         if let Some(p) = app.c3_preview.docs.get_mut(&id) {
             p.pinned = true;
         }
         app.c3_preview.discover(id, source, app.ui.c3_preview.client_root.clone(), Some((path, bytes)), &ctx);
+        if let Some(preview) = app.c3_preview.docs.get_mut(&id) {
+            preview.source_doc = Some(texture_id);
+        }
         Ok(json!({"loading":true}))
     })
 }
@@ -766,24 +953,37 @@ fn rematch(app: &mut PhotocraftApp, ctx: &egui::Context) -> Result<Value, String
 }
 fn match_client(app: &mut PhotocraftApp, ctx: &egui::Context) -> Result<Value, String> {
     let st = app.session.active().ok_or_else(|| "Open a texture first".to_string())?;
-    let id = st.doc.id;
-    let source = st.path.clone().unwrap_or_else(|| st.doc.name.clone());
+    let id = app.c3_preview.owner(st.doc.id);
+    let source_doc = st.doc.id;
+    // An explicit client selection must not be overridden by the old file's
+    // ancestor client. Automatic document opens still use their full path.
+    let source = if app.ui.c3_preview.client_root.is_some() { st.doc.name.clone() } else { st.path.clone().unwrap_or_else(|| st.doc.name.clone()) };
     let p = app.c3_preview.docs.entry(id).or_default();
     p.pinned = false;
     app.c3_preview.discover(id, source, app.ui.c3_preview.client_root.clone(), None, ctx);
+    if let Some(preview) = app.c3_preview.docs.get_mut(&id) {
+        preview.source_doc = Some(source_doc);
+    }
     Ok(json!({"loading":true}))
 }
 fn load_candidate(app: &mut PhotocraftApp, path: &str, ctx: &egui::Context) -> Result<Value, String> {
-    let id = app.session.active().map(|d| d.doc.id).ok_or_else(|| "Open a texture first".to_string())?;
+    let id = workspace::scene_id(app).ok_or_else(|| "Open a texture first".to_string())?;
     #[cfg(not(target_arch = "wasm32"))]
     {
+        let (source_doc, source) = app
+            .session
+            .active()
+            .map(|state| (state.doc.id, state.path.clone().unwrap_or_else(|| state.doc.name.clone())))
+            .ok_or_else(|| "Open a texture first".to_string())?;
         let p = app.c3_preview.docs.get_mut(&id).ok_or_else(|| "Preview has not initialized".to_string())?;
         let root = p.root.clone().or_else(|| app.ui.c3_preview.client_root.clone());
         // A selected candidate remains client-relative; the background worker
         // reads it through the same bounded client authority as discovery.
         p.pinned = true;
-        let source = p.source.clone();
         app.c3_preview.discover(id, source, root, Some((path.into(), Vec::new())), ctx);
+        if let Some(preview) = app.c3_preview.docs.get_mut(&id) {
+            preview.source_doc = Some(source_doc);
+        }
         Ok(json!({"loading":true}))
     }
     #[cfg(target_arch = "wasm32")]
@@ -794,6 +994,9 @@ fn load_candidate(app: &mut PhotocraftApp, path: &str, ctx: &egui::Context) -> R
 }
 
 pub(crate) fn menu(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, params: &Value) -> Option<Result<Value, String>> {
+    if let Some(result) = workspace::command(app, ctx, id, params) {
+        return Some(result);
+    }
     Some(match id {
         "window.toggle.c3Preview" => {
             app.ui.c3_preview.enabled = !visible(app);
@@ -804,7 +1007,8 @@ pub(crate) fn menu(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, param
             if let Some(path) = params.get("path").and_then(Value::as_str) {
                 (|| {
                     let st = app.session.active().ok_or_else(|| "Open a texture first".to_string())?;
-                    let id = st.doc.id;
+                    let id = app.c3_preview.owner(st.doc.id);
+                    let source_doc = st.doc.id;
                     let source = st.path.clone().unwrap_or_else(|| st.doc.name.clone());
                     let read = app.services.automation_read.as_mut().ok_or_else(|| "Automation file reads are not configured".to_string())?;
                     let (_, bytes) = read(path)?;
@@ -812,6 +1016,9 @@ pub(crate) fn menu(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, param
                         return Err("C3 exceeds the preview file limit".into());
                     }
                     app.c3_preview.discover(id, source, None, Some((path.into(), bytes)), ctx);
+                    if let Some(preview) = app.c3_preview.docs.get_mut(&id) {
+                        preview.source_doc = Some(source_doc);
+                    }
                     app.ui.c3_preview.enabled = true;
                     Ok(json!({"loading":true}))
                 })()
@@ -846,7 +1053,8 @@ pub(crate) fn menu(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, param
             let loaded = app
                 .session
                 .active()
-                .and_then(|d| app.c3_preview.docs.get_mut(&d.doc.id))
+                .map(|d| app.c3_preview.owner(d.doc.id))
+                .and_then(|id| app.c3_preview.docs.get_mut(&id))
                 .and_then(|p| p.loaded.as_mut())
                 .ok_or_else(|| "Load a C3 model first".to_string())?;
             if index >= loaded.model.meshes.len() {
@@ -933,6 +1141,19 @@ fn settings(app: &mut PhotocraftApp, params: &Value) -> Result<Value, String> {
     Ok(json!(app.ui.c3_preview))
 }
 pub(crate) fn inspect(app: &PhotocraftApp) -> Value {
-    let p = app.session.active().and_then(|d| app.c3_preview.docs.get(&d.doc.id));
-    json!({"state":app.ui.c3_preview,"rect":app.c3_preview.rect.map(|r|[r.min.x,r.min.y,r.max.x,r.max.y]),"loading":app.c3_preview.discovery.is_some(),"textureUpdating":app.c3_preview.texture_job.is_some(),"status":p.map(|p|p.status.as_str()),"root":p.and_then(|p|p.root.as_deref()),"path":p.and_then(|p|p.loaded.as_ref()).map(|l|l.path.as_str()),"candidates":p.map(|p|p.candidates.iter().map(|c|json!({"path":c.path,"reason":c.reason})).collect::<Vec<_>>()),"parts":p.and_then(|p|p.loaded.as_ref()).map(|l|l.model.meshes.iter().zip(&l.selected).zip(&l.visible).map(|((m,s),v)|json!({"name":m.name,"variant":m.variant,"texture":m.texture,"vertices":m.vertices.len(),"triangles":m.indices.len()/3,"edited":s,"visible":v})).collect::<Vec<_>>()),"warnings":p.map(|p|&p.warnings),"textureRevision":p.and_then(|p|p.key).map(|k|json!({"revision":k.revision,"preview":k.preview})),"textureSize":p.and_then(|p|p.image.as_ref()).map(|i|i.size)})
+    let p = workspace::scene_id(app).and_then(|id| app.c3_preview.docs.get(&id));
+    let active = app.session.active().and_then(|state| app.c3_preview.docs.get(&state.doc.id));
+    let loaded = p.and_then(|preview| preview.loaded.as_ref());
+    let visibility = loaded.map(workspace::effective_visibility).unwrap_or_default();
+    json!({
+        "state":app.ui.c3_preview,"rect":app.c3_preview.rect.map(|r|[r.min.x,r.min.y,r.max.x,r.max.y]),
+        "loading":app.c3_preview.discovery.is_some(),"textureUpdating":app.c3_preview.texture_job.is_some(),
+        "status":p.map(|p|p.status.as_str()),"root":p.and_then(|p|p.root.as_deref()),"path":loaded.map(|l|l.path.as_str()),
+        "objectId":loaded.and_then(|loaded|loaded.object_id.as_deref()),"objects":p.map(|p|&p.objects),"tiled":p.is_some_and(|p|p.tiled),
+        "candidates":p.map(|p|p.candidates.iter().map(|c|json!({"path":c.path,"reason":c.reason})).collect::<Vec<_>>()),
+        "pieces":loaded.map(|loaded|loaded.pieces.iter().enumerate().map(|(i,piece)|json!({"index":i,"key":piece.key,"path":piece.path,"visible":piece.visible,"meshes":piece.range.len(),"note":piece.note,"textures":piece.textures})).collect::<Vec<_>>()),
+        "textures":loaded.map(|loaded|loaded.assets.iter().enumerate().map(|(index,asset)|json!({"index":index,"key":asset.key,"path":asset.path,"ready":asset.bytes.is_some(),"note":asset.note,"shown":p.is_none_or(|p|!p.hidden_textures.contains(&index)),"document":p.and_then(|p|p.texture_docs.get(&index)).map(|id|id.0)})).collect::<Vec<_>>()),
+        "parts":loaded.map(|l|l.model.meshes.iter().zip(&l.selected).enumerate().map(|(i,(m,s))|json!({"name":m.name,"variant":m.variant,"texture":m.texture,"vertices":m.vertices.len(),"triangles":m.indices.len()/3,"edited":s,"visible":visibility.get(i)})).collect::<Vec<_>>()),
+        "warnings":p.map(|p|&p.warnings),"textureRevision":active.and_then(|p|p.key).map(|k|json!({"revision":k.revision,"preview":k.preview})),"textureSize":active.and_then(|p|p.image.as_ref()).map(|i|i.size)
+    })
 }

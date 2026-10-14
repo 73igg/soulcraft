@@ -25,6 +25,7 @@ const PANELS: &[(&str, &str, Group)] = &[
     ("layers", "Layers", Group::Layers),
     ("channels", "Channels", Group::Layers),
     ("paths", "Paths", Group::Layers),
+    ("c3Preview", "C3 Preview", Group::Layers),
 ];
 #[derive(Clone, Default)]
 struct LegacyDrag {
@@ -162,6 +163,12 @@ fn placement(params: &Value) -> Result<Placement<String>, String> {
 }
 
 pub(crate) fn command(app: &mut PhotocraftApp, id: &str, params: &Value) -> Option<Result<Value, String>> {
+    if id == "window.toggle.c3Preview" {
+        return None;
+    }
+    if id == "window.panel.c3Preview" && app.ui.docking.is_none() {
+        return Some(change(app, "activate", &json!({"panel":"c3Preview"})));
+    }
     if id == "window.panel.group" {
         return Some(group_command(app, params));
     }
@@ -362,6 +369,7 @@ fn change(app: &mut PhotocraftApp, operation: &str, params: &Value) -> Result<Va
 }
 
 pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> bool {
+    migrate_object_tab(app);
     let area = egui::Id::new("photocraft-panel-docking");
     let stale_origin =
         ui.ctx().data_mut(|data| data.get_temp::<LegacyDrag>(area.with("legacy-origin")).is_some_and(|origin| origin.generation != app.ui.docking_generation));
@@ -491,6 +499,36 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> bool {
     }
     crate::dock::persist(app, ui.ctx());
     true
+}
+
+fn migrate_object_tab(app: &mut PhotocraftApp) {
+    if app.ui.c3_preview.object_tab_added {
+        return;
+    }
+    app.ui.c3_preview.object_tab_added = true;
+    let Some(layout) = &mut app.ui.docking else { return };
+    if !valid(layout) || layout.contains(&"c3Preview".to_owned()) {
+        return;
+    }
+    fn append(node: &mut Node<String>, depth: usize) -> bool {
+        if depth > 64 {
+            return false;
+        }
+        match node {
+            Node::Tabs { panels, .. } if panels.iter().any(|panel| matches!(panel.as_str(), "layers" | "channels" | "paths")) => {
+                panels.push("c3Preview".into());
+                true
+            }
+            Node::Split { first, second, .. } => append(first, depth + 1) || append(second, depth + 1),
+            _ => false,
+        }
+    }
+    if layout.root.as_mut().is_some_and(|root| append(root, 0)) {
+        return;
+    }
+    if let Some(group) = layout.floating.iter_mut().find(|group| group.panels.iter().any(|panel| matches!(panel.as_str(), "layers" | "channels" | "paths"))) {
+        group.panels.push("c3Preview".into());
+    }
 }
 
 pub(crate) fn legacy_tab(app: &mut PhotocraftApp, ui: &mut egui::Ui, panel: &str, response: &egui::Response) {

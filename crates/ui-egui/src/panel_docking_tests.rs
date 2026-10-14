@@ -7,6 +7,34 @@ fn app() -> PhotocraftApp {
 }
 
 #[test]
+fn old_layout_receives_the_c3_object_tab_once_without_changing_selection() {
+    let mut app = app();
+    app.ui.docking =
+        Some(Layout { root: Some(Node::Tabs { panels: vec!["layers".into(), "channels".into(), "paths".into()], active: 1 }), floating: Vec::new() });
+    migrate_object_tab(&mut app);
+    assert!(
+        matches!(&app.ui.docking.as_ref().unwrap().root, Some(Node::Tabs { panels, active: 1 }) if panels == &["layers", "channels", "paths", "c3Preview"])
+    );
+    app.run("window.panel.close", json!({"panel":"c3Preview"})).unwrap();
+    migrate_object_tab(&mut app);
+    assert!(!app.ui.docking.as_ref().unwrap().contains(&"c3Preview".into()));
+    app.run("window.panel.c3Preview", json!({})).unwrap();
+    assert!(app.ui.docking.as_ref().unwrap().contains(&"c3Preview".into()));
+}
+
+#[test]
+fn c3_object_tab_and_viewport_have_independent_window_commands() {
+    let mut app = app();
+    let ctx = egui::Context::default();
+    crate::menus::invoke(&mut app, &ctx, "window.panel.c3Preview", json!({})).unwrap();
+    assert!(app.ui.docking.as_ref().unwrap().contains(&"c3Preview".into()));
+    let before = app.ui.docking.clone();
+    crate::menus::invoke(&mut app, &ctx, "window.toggle.c3Preview", json!({})).unwrap();
+    assert_eq!(app.ui.docking, before);
+    assert!(app.ui.c3_preview.show_for_all);
+}
+
+#[test]
 fn panel_commands_group_split_reorder_float_and_restore_without_duplicate_ownership() {
     let mut app = app();
     app.run("window.panel.move", json!({"panel":"swatches", "anchor":"layers", "zone":"top"})).unwrap();

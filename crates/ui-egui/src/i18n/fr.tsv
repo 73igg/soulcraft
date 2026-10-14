@@ -3150,3 +3150,8 @@ curves	Smooth	Lisser
 	C3 View Preset	Vue C3 prédéfinie
 	C3 Preview Settings	Paramètres de l’aperçu C3
 	C3 Mesh Part Settings	Paramètres des parties du maillage C3
+# Linked C3 objects
+	C3 Preview	Aperçu C3
+	C3 Linked Object	Objet C3 lié
+	C3 Object Piece Visibility	Visibilité des pièces de l’objet C3
+	C3 Object Textures	Textures de l’objet C3

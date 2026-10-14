@@ -4222,3 +4222,8 @@ shape	Appearance	Izgled
 	C3 View Preset	Унапред подешени C3 приказ
 	C3 Preview Settings	Подешавања C3 прегледа
 	C3 Mesh Part Settings	Подешавања делова C3 мреже
+# Linked C3 objects
+	C3 Preview	C3 преглед
+	C3 Linked Object	Повезани C3 објекат
+	C3 Object Piece Visibility	Видљивост делова C3 објекта
+	C3 Object Textures	Текстуре C3 објекта

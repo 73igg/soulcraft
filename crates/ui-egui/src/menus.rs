@@ -22,6 +22,7 @@ pub const TOP_MENUS: [&str; 10] = ["File", "Edit", "Image", "Layer", "Type", "Se
 /// UI-level commands (handled by the shell rather than the engine): id, label, menu, shortcut.
 pub const UI_COMMANDS: &[(&str, &str, &[&str], Option<&str>)] = &[
     ("window.toggle.c3Preview", "C3 Texture Preview", &["Window"], None),
+    ("window.panel.c3Preview", "C3 Preview", &["Window"], None),
     ("preview.c3.load", "Load C3 Mesh…", &[], None),
     ("preview.c3.clientFolder", "Select C3 Client Folder…", &[], None),
     ("preview.c3.rematch", "Find Matching C3 Model", &[], None),
@@ -29,6 +30,9 @@ pub const UI_COMMANDS: &[(&str, &str, &[&str], Option<&str>)] = &[
     ("preview.c3.view", "C3 View Preset", &[], None),
     ("preview.c3.settings", "C3 Preview Settings", &[], None),
     ("preview.c3.part", "C3 Mesh Part Settings", &[], None),
+    ("preview.c3.object", "C3 Linked Object", &[], None),
+    ("preview.c3.piece", "C3 Object Piece Visibility", &[], None),
+    ("preview.c3.textures", "C3 Object Textures", &[], None),
     ("ui.symmetryTransform", "Transform Symmetry", &[], None),
     // Right-click the options bar's tool icon (#2825); `tool.resetAll` asks first.
     ("tool.reset", "Reset Tool", &[], None),
@@ -762,7 +766,7 @@ pub fn is_enabled(app: &PhotocraftApp, id: &str) -> bool {
     }
     match id {
         i if i.starts_with("preview.c3.") => app.session.active().is_some(),
-        "window.panel.activate" | "window.panel.layout" => true,
+        "window.panel.activate" | "window.panel.layout" | "window.panel.c3Preview" => true,
         "window.panel.group" | "window.panel.move" | "window.panel.float" | "window.panel.dock" | "window.panel.close" => !app.session.prefs().workspace_locked,
         "file.open" | "file.exit" | "file.clearRecent" | "file.removeRecent" | "help.about" | "help.systemInfo" | "edit.search" => true,
         i if i.starts_with("file.openRecent.") => true,

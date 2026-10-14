@@ -16,12 +16,31 @@ pub struct Candidate {
     pub rank: u8,
 }
 
+/// One INI object, retaining its sibling resources instead of treating them as
+/// alternative models for the same texture.
+#[derive(Clone, Debug)]
+pub struct ObjectDefinition {
+    pub id: String,
+    pub label: String,
+    pub parts: Vec<ObjectPart>,
+}
+#[derive(Clone, Debug)]
+pub struct ObjectPart {
+    pub slot: usize,
+    pub binding: String,
+    pub mesh: Option<String>,
+    pub texture: Option<String>,
+    pub note: Option<String>,
+}
+
 pub struct ClientAssets {
     pub root: PathBuf,
     files: HashMap<String, PathBuf>,
     associations: HashMap<String, Vec<Candidate>>,
     archives: Vec<crate::archive::LazyArchive>,
     models: HashSet<String>,
+    objects: Vec<ObjectDefinition>,
+    object_textures: HashMap<String, Vec<usize>>,
     pub warnings: Vec<String>,
 }
 
@@ -88,15 +107,26 @@ pub fn read_bounded(path: &Path, limit: usize) -> Result<Vec<u8>> {
     Ok(data)
 }
 
+/// A decompiled c3 tree can have its registries in the parent client. Search
+/// only a bounded ancestor chain, without enumerating unrelated client trees.
+pub fn catalog_root(folder: &Path) -> Option<PathBuf> {
+    let folder = folder.canonicalize().ok()?;
+    folder
+        .ancestors()
+        .take(12)
+        .find(|root| (root.join("ini").is_dir() || root.join("decomp/ini").is_dir()) && (root.join("c3").is_dir() || root.join("decomp/c3").is_dir()))
+        .map(Path::to_path_buf)
+}
+
 /// Infer a client folder only among a texture's ancestors, never the whole disk.
 pub fn infer_root(texture: &Path) -> Option<PathBuf> {
     if !texture.is_absolute() {
         return texture.canonicalize().ok().and_then(|p| infer_root(&p));
     }
+    if let Some(root) = catalog_root(texture.parent()?) {
+        return Some(root);
+    }
     for root in texture.parent()?.ancestors().take(12) {
-        if root.join("ini").is_dir() && root.join("c3").is_dir() {
-            return Some(root.into());
-        }
         if root.file_name().is_some_and(|n| n.eq_ignore_ascii_case("c3")) {
             return root.parent().map(Path::to_path_buf);
         }
@@ -107,7 +137,11 @@ pub fn infer_root(texture: &Path) -> Option<PathBuf> {
 #[derive(Default)]
 struct Ini {
     flat: HashMap<String, String>,
-    sections: Vec<HashMap<String, String>>,
+    sections: Vec<IniSection>,
+}
+struct IniSection {
+    name: String,
+    fields: HashMap<String, String>,
 }
 fn parse_ini(bytes: &[u8]) -> Result<Ini> {
     let text = match std::str::from_utf8(bytes) {
@@ -116,6 +150,7 @@ fn parse_ini(bytes: &[u8]) -> Result<Ini> {
     };
     let mut out = Ini::default();
     let mut section = HashMap::new();
+    let mut section_name = String::new();
     let mut entries = 0;
     for line in text.lines() {
         if line.len() > 16_384 {
@@ -127,11 +162,12 @@ fn parse_ini(bytes: &[u8]) -> Result<Ini> {
         }
         if line.starts_with('[') {
             if !section.is_empty() {
-                out.sections.push(std::mem::take(&mut section));
+                out.sections.push(IniSection { name: section_name.clone(), fields: std::mem::take(&mut section) });
             }
+            section_name = line.trim_start_matches('[').split(']').next().unwrap_or_default().trim().into();
         } else if let Some((key, value)) = line.split_once('=') {
             entries += 1;
-            if entries > 500_000 {
+            if entries > 1_000_000 {
                 return Err(Error("INI exceeds the entry budget".into()));
             }
             let key = id(key);
@@ -145,7 +181,7 @@ fn parse_ini(bytes: &[u8]) -> Result<Ini> {
         }
     }
     if !section.is_empty() {
-        out.sections.push(section);
+        out.sections.push(IniSection { name: section_name, fields: section });
     }
     Ok(out)
 }
@@ -166,6 +202,8 @@ impl ClientAssets {
             associations: HashMap::new(),
             archives: Vec::new(),
             models: HashSet::new(),
+            objects: Vec::new(),
+            object_textures: HashMap::new(),
             warnings: Vec::new(),
         };
         let mut packages = Vec::new();
@@ -191,7 +229,8 @@ impl ClientAssets {
 
     /// Catalog associations can be built without enumerating thousands of assets.
     pub fn quick(root: &Path, cancel: &AtomicBool) -> Result<Self> {
-        let mut out = Self::loose(root, cancel)?;
+        let root = catalog_root(root).unwrap_or_else(|| root.to_path_buf());
+        let mut out = Self::loose(&root, cancel)?;
         let mut ini_paths = Vec::new();
         for folder in [out.root.join("ini"), out.root.join("decomp/ini"), out.root.clone()] {
             if let Ok(resolved) = folder.canonicalize()
@@ -226,6 +265,8 @@ impl ClientAssets {
     }
 
     pub fn build(root: &Path, cancel: &AtomicBool) -> Result<Self> {
+        let inferred = catalog_root(root);
+        let root = inferred.as_deref().unwrap_or(root);
         let root = root.canonicalize().map_err(|e| Error(format!("client folder: {e}")))?;
         if !root.is_dir() {
             return Err(Error("choose a client folder".into()));
@@ -236,6 +277,8 @@ impl ClientAssets {
             associations: HashMap::new(),
             archives: Vec::new(),
             models: HashSet::new(),
+            objects: Vec::new(),
+            object_textures: HashMap::new(),
             warnings: Vec::new(),
         };
         let mut stack = vec![(root.clone(), 0usize)];
@@ -281,8 +324,12 @@ impl ClientAssets {
                 }
             }
         }
-        let ini_paths: Vec<_> =
-            out.files.iter().filter(|(k, _)| k.ends_with(".ini") && (k.starts_with("ini/") || !k.contains('/'))).map(|(k, p)| (k.clone(), p.clone())).collect();
+        let ini_paths: Vec<_> = out
+            .files
+            .iter()
+            .filter(|(k, _)| k.ends_with(".ini") && (k.starts_with("ini/") || k.starts_with("decomp/ini/") || !k.contains('/')))
+            .map(|(k, p)| (k.clone(), p.clone()))
+            .collect();
         let mut archives: Vec<_> = out.files.iter().filter(|(k, _)| k.ends_with(".dnp") && !k.contains('/')).map(|(k, p)| (k.clone(), p.clone())).collect();
         archives.sort();
         for (name, path) in archives.into_iter().take(16) {
@@ -296,8 +343,15 @@ impl ClientAssets {
         Ok(out)
     }
 
-    fn read_catalogs(&mut self, ini_paths: Vec<(String, PathBuf)>, cancel: &AtomicBool) -> Result<()> {
+    fn read_catalogs(&mut self, mut ini_paths: Vec<(String, PathBuf)>, cancel: &AtomicBool) -> Result<()> {
+        ini_paths.sort_by_key(|(_, path)| {
+            path.strip_prefix(&self.root).ok().map(|p| {
+                let key = norm(&p.to_string_lossy());
+                (key.starts_with("decomp/"), !key.starts_with("ini/"), key)
+            })
+        });
         let mut catalogs = Vec::new();
+        let mut seen_catalogs = HashSet::new();
         let mut total = 0;
         for (key, path) in ini_paths {
             if cancel.load(Ordering::Relaxed) {
@@ -308,12 +362,25 @@ impl ClientAssets {
             if !catalog_name(&name) {
                 continue;
             }
-            let bytes = read_bounded(&path, 32 * 1024 * 1024)?;
+            if !seen_catalogs.insert(name.clone()) {
+                continue;
+            }
+            let bytes = match read_bounded(&path, 32 * 1024 * 1024) {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    self.warnings.push(format!("Skipped {name}: {error}"));
+                    continue;
+                }
+            };
             total += bytes.len();
             if total > 128 * 1024 * 1024 {
-                return Err(Error("client INIs exceed the discovery budget".into()));
+                self.warnings.push("Remaining client INIs exceed the discovery budget".into());
+                break;
             }
-            catalogs.push((name, parse_ini(&bytes)?));
+            match parse_ini(&bytes) {
+                Ok(ini) => catalogs.push((name, ini)),
+                Err(error) => self.warnings.push(format!("Skipped {name}: {error}")),
+            }
         }
         let flat = |name: &str| catalogs.iter().find(|(k, _)| k == name).map(|(_, v)| v.flat.clone()).unwrap_or_default();
         let textures = flat("3dtexture.ini");
@@ -326,7 +393,9 @@ impl ClientAssets {
             }
         }
         for (name, ini) in &catalogs {
-            for fields in &ini.sections {
+            for section in &ini.sections {
+                let fields = &section.fields;
+                let mut parts = Vec::new();
                 for (key, texture_id) in fields {
                     let (mesh_key, registry) = if let Some(suffix) = key.strip_prefix("textureid") {
                         (format!("effectid{suffix}"), &effects)
@@ -335,15 +404,124 @@ impl ClientAssets {
                     } else {
                         continue;
                     };
+                    if let Some(mesh_id) = fields.get(&mesh_key) {
+                        let suffix = key.trim_start_matches("textureid").trim_start_matches("texture");
+                        let slot = if suffix.is_empty() { Some(0) } else { suffix.parse::<usize>().ok() };
+                        let count_key = if key.starts_with("textureid") { "amount" } else { "part" };
+                        let limit = fields.get(count_key).and_then(|value| value.parse::<usize>().ok()).unwrap_or(64).min(64);
+                        if let Some(slot) = slot.filter(|slot| *slot < limit) {
+                            let mesh = registry.get(&id(mesh_id)).and_then(|path| relative(path).ok()).filter(|p| p.ends_with(".c3"));
+                            let texture = textures.get(&id(texture_id)).and_then(|path| relative(path).ok());
+                            let note = if mesh.is_none() || texture.is_none() {
+                                Some(format!("{name} [{}] part {slot}: unresolved mesh {mesh_id} or texture {texture_id}", section.name))
+                            } else {
+                                None
+                            };
+                            parts.push(ObjectPart { slot, binding: mesh_key.clone(), mesh, texture, note });
+                        }
+                    }
                     if let Some(mesh_id) = fields.get(&mesh_key)
                         && let (Some(mesh), Some(tex)) = (registry.get(&id(mesh_id)), textures.get(&id(texture_id)))
                     {
                         self.add(tex, mesh, &format!("{name}: {mesh_key}/{key}"), 0);
                     }
                 }
+                // A missing TextureN must not silently remove its C3 geometry.
+                for (key, mesh_id) in fields {
+                    let (suffix, registry, count_key) = if let Some(suffix) = key.strip_prefix("mesh") {
+                        (suffix, &objects, "part")
+                    } else if let Some(suffix) = key.strip_prefix("effectid") {
+                        (suffix, &effects, "amount")
+                    } else {
+                        continue;
+                    };
+                    let slot = if suffix.is_empty() { Some(0) } else { suffix.parse::<usize>().ok() };
+                    let limit = fields.get(count_key).and_then(|value| value.parse::<usize>().ok()).unwrap_or(64).min(64);
+                    if let Some(slot) = slot.filter(|slot| *slot < limit)
+                        && !parts.iter().any(|part| part.binding == *key)
+                    {
+                        let mesh = registry.get(&id(mesh_id)).and_then(|path| relative(path).ok()).filter(|path| path.ends_with(".c3"));
+                        parts.push(ObjectPart {
+                            slot,
+                            binding: key.clone(),
+                            mesh,
+                            texture: None,
+                            note: Some(format!("{name} [{}] part {slot}: missing texture reference for {key}={mesh_id}", section.name)),
+                        });
+                    }
+                }
+                for (prefix, texture_prefix, count_key) in [("mesh", "texture", "part"), ("effectid", "textureid", "amount")] {
+                    if !parts.iter().any(|part| part.binding.starts_with(prefix)) {
+                        continue;
+                    }
+                    let Some(count) = fields.get(count_key).and_then(|value| value.parse::<usize>().ok()) else { continue };
+                    for slot in 0..count.min(64) {
+                        if parts.iter().any(|part| part.slot == slot && part.binding.starts_with(prefix)) {
+                            continue;
+                        }
+                        let binding = format!("{prefix}{slot}");
+                        let texture =
+                            fields.get(&format!("{texture_prefix}{slot}")).and_then(|value| textures.get(&id(value))).and_then(|path| relative(path).ok());
+                        parts.push(ObjectPart {
+                            slot,
+                            binding: binding.clone(),
+                            mesh: None,
+                            texture,
+                            note: Some(format!("{name} [{}] part {slot}: missing {binding} reference", section.name)),
+                        });
+                    }
+                }
+                parts.sort_by_key(|part| (part.slot, part.binding.clone()));
+                parts.truncate(64);
+                if !parts.is_empty() && self.objects.len() < 50_000 {
+                    let index = self.objects.len();
+                    let mut seen = HashSet::new();
+                    for part in &parts {
+                        if let Some(texture) = &part.texture
+                            && seen.insert(texture.clone())
+                        {
+                            self.object_textures.entry(texture.clone()).or_default().push(index);
+                        }
+                    }
+                    self.objects.push(ObjectDefinition { id: format!("{name}:{}", section.name), label: format!("{name} [{}]", section.name), parts });
+                }
             }
         }
         Ok(())
+    }
+
+    pub fn object(&self, id: &str) -> Option<&ObjectDefinition> {
+        self.objects.iter().find(|object| object.id == id)
+    }
+    pub fn objects_for_texture(&self, texture: &str) -> Vec<ObjectDefinition> {
+        let canonical = Path::new(texture).canonicalize().ok();
+        let relative = canonical.as_deref().and_then(|path| path.strip_prefix(&self.root).ok()).map(|path| {
+            let key = norm(&path.to_string_lossy());
+            key.strip_prefix("decomp/").unwrap_or(&key).to_string()
+        });
+        let key = relative.unwrap_or_else(|| norm(texture));
+        let mut indices = self.object_textures.get(&key).cloned().unwrap_or_default();
+        if indices.is_empty() {
+            let base = basename(texture);
+            for (path, matches) in &self.object_textures {
+                if basename(path) == base {
+                    indices.extend(matches);
+                }
+            }
+        }
+        indices.sort_unstable();
+        indices.dedup();
+        let mut objects: Vec<_> = indices.into_iter().filter_map(|index| self.objects.get(index)).collect();
+        objects.sort_by(|a, b| (a.id.starts_with("3deffect"), &a.id).cmp(&(b.id.starts_with("3deffect"), &b.id)));
+        objects.truncate(512);
+        objects.into_iter().cloned().collect()
+    }
+
+    /// A loose editable texture keeps its actual file path. Packed textures are
+    /// opened as documents without an overwrite target and use Save As.
+    pub fn editable_path(&self, key: &str) -> Option<PathBuf> {
+        let path = self.loose_path(key)?.canonicalize().ok()?;
+        path.starts_with(&self.root).then_some(path)
     }
 
     fn add(&mut self, tex: &str, mesh: &str, reason: &str, rank: u8) {

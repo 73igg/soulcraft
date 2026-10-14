@@ -1966,6 +1966,9 @@ pub fn document_area(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
 /// Window › Arrange tiles: each document shown with its tile in `rect`, or `None` when the
 /// active document fills the area.
 pub(crate) fn arranged_cells(app: &PhotocraftApp, rect: Rect) -> Option<Vec<(usize, Rect)>> {
+    if let Some(cells) = crate::c3_preview::arranged_cells(app, rect) {
+        return Some(cells);
+    }
     let idx = app.session.active_index()?;
     let n = app.session.documents().len();
     let cells = crate::view_cmds::cells(&app.ui.view.arrange, rect, n)?;
@@ -2017,12 +2020,29 @@ fn documents(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     if let Some(shown) = arranged_cells(app, rect) {
         let t = crate::theme::Tokens::get(ui.ctx());
         for (d, cell) in shown {
-            let cell = cell.shrink(1.0);
+            let hit_rect = cell;
+            let mut cell = cell.shrink(1.0);
+            if crate::c3_preview::tiled(app) {
+                let height = 22.0f32.min(cell.height() * 0.3);
+                let header = Rect::from_min_size(cell.min, vec2(cell.width(), height));
+                ui.painter().rect_filled(header, 0.0, t.card);
+                if let Some(state) = app.session.documents().get(d) {
+                    let title = format!("{}{}", crate::file_open::display_name(&state.doc.name), if state.is_dirty() { " *" } else { "" });
+                    ui.painter().with_clip_rect(header).text(
+                        header.left_center() + vec2(5., 0.),
+                        egui::Align2::LEFT_CENTER,
+                        title,
+                        egui::FontId::proportional(11.),
+                        t.text,
+                    );
+                }
+                cell.min.y += height;
+            }
             let view = app.ui.views[d].clone();
             let v = canvas_view(app, ui, d, cell, view, d == idx);
             if d != idx {
                 app.ui.views[d] = v;
-                if ui.input(|i| i.pointer.primary_pressed() && i.pointer.interact_pos().is_some_and(|p| cell.contains(p))) {
+                if ui.input(|i| i.pointer.primary_pressed() && i.pointer.interact_pos().is_some_and(|p| hit_rect.contains(p))) {
                     app.session.set_active(d);
                 }
             }

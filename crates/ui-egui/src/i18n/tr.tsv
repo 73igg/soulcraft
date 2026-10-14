@@ -3880,3 +3880,8 @@ cameraData	Lens	Lens
 	C3 View Preset	C3 Görünüm Ön Ayarı
 	C3 Preview Settings	C3 Önizleme Ayarları
 	C3 Mesh Part Settings	C3 Mesh Parçası Ayarları
+# Linked C3 objects
+	C3 Preview	C3 Önizleme
+	C3 Linked Object	Bağlı C3 Nesnesi
+	C3 Object Piece Visibility	C3 Nesne Parçası Görünürlüğü
+	C3 Object Textures	C3 Nesne Dokuları
