@@ -8,6 +8,8 @@ Open `.dds` through File → Open, drag and drop, or the command line. Every mip
 
 Use the ordinary brushes, selections, masks, filters and adjustments. **Save / Save As → DDS** retains the original header, texture shape, surface ordering and mip count. Untouched surfaces retain their original compressed bytes. Edits to additional painting or adjustment layers are composited into the first surface; other texture surfaces are exported from their corresponding DDS layers.
 
+Keep the mapped DDS surface layers at the document's top level when preserving the original texture layout. Use **Texture → Image** to export an arbitrary grouped layer composition as one flattened image.
+
 Save a working copy as `.pcraft` to keep the editing layers, the original DDS container and its surface mapping. Reopening the project restores the mapping even when layer identities are remapped.
 
 After editing a base image, use **File → Export → Export DDS** and **Mipmaps → Generate full chain** to refresh its mip levels. **Keep existing** preserves edited or hand-authored mips. **No mipmaps** removes lower levels. After resizing an imported DDS, Generate or None rebuilds its layout; preserving incompatible sizes produces an error.
@@ -43,6 +45,8 @@ The decoder also accepts the other normalized, packed colour and supported YUV l
 
 The low-level flat-image decoder returns the first surface. The document importer opens the complete texture, so editor and CLI workflows keep all surfaces. Arbitrary legacy masks without a named DXGI format retain the previous single-image compatibility decoder and export through a standard colour layout.
 
+RGB8 is a legacy 24-bit DDS layout without a DXGI equivalent. Automatic may select it for a new 8-bit RGB image. PhotoCraft reads and writes it, but Microsoft's DirectXTex decoder rejects it. Choose RGBA8 or a BC format for DirectX tool compatibility and DX10 texture arrays.
+
 ## Input limits
 
 The importer checks the complete texture and its tiled document allocation before creating layers. It permits at most 65,536 subresources. The codec's default allocation budget is 8 GiB on 64-bit targets and 1 GiB on 32-bit targets, with additional pixel and dimension limits. Excessive texture arrays, invalid headers and missing mip data fail with an error.
@@ -66,7 +70,7 @@ cargo test -p photocraft-codecs --lib --tests
 cargo test -p photocraft-io --test dds
 ```
 
-The custom regression suite covers lossless 8/16/half/float data, all selectable storage formats, signed channels, BC6H HDR, sRGB/alpha mip filtering, non-multiple-of-four geometry, malformed files, full arrays/cubes/volumes, byte-exact saves, editing hidden faces, mip generation/removal and DDS preservation through `.pcraft`. The release is also checked through the native application and Microsoft's DirectXTex tools. Details and results are recorded in the release's verification report.
+The custom regression suite covers lossless 8/16/half/float data, all selectable storage formats, signed channels, BC6H HDR, sRGB/alpha mip filtering, non-multiple-of-four geometry, malformed files, full arrays/cubes/volumes, byte-exact saves, editing hidden faces, mip generation/removal and DDS preservation through `.pcraft`. The release is also checked through the native application and Microsoft's DirectXTex tools. Details and results are recorded in the [release verification report](dds-validation.md).
 
 The Windows portable distribution has its own folder, executable identity and preferences. `portable.txt` stores settings in `PhotoCraftData` beside the executable; its platform fallback is `Photocraft Custom`, separate from the original installation.
 

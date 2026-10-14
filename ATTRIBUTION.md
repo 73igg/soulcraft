@@ -77,7 +77,7 @@ The other built-in ICC profiles and the generated LUT looks are produced by code
 
 | Path | Title | Author | Source | License |
 |---|---|---|---|---|
-| `docs/brand/` (all files) | ArtCraft name, wordmark and mark | ArtCraft Team | getartcraft.com | Not open source; trademarks of the ArtCraft Team, [`docs/brand/LICENSE-brand.txt`](docs/brand/LICENSE-brand.txt) |
+| `docs/brand/LICENSE-brand.txt` | Upstream ArtCraft branding terms; logo assets removed from this custom distribution | ArtCraft Team | getartcraft.com | Trademark notice retained for reference; upstream branding is not open source |
 | `docs/images/photocraft-*.jpg` | PhotoCraft screenshots | PhotoCraft contributors (UI) | Rendered offscreen with the `snapshot` example | MIT OR Apache-2.0 (UI); the artwork in each is public domain, listed below |
 | `docs/images/preferences-apply-*.png` | Preferences before and after adding Apply (no artwork) | PhotoCraft contributors | PhotoCraft control-channel capture and offscreen `snapshot` example | MIT OR Apache-2.0 |
 

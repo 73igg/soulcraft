@@ -2,6 +2,7 @@
 
 | File | Content | Source / licence |
 |---|---|---|
+| `photocraft-custom-dds-edit.png`, `photocraft-custom-dds-export.png` | Native PhotoCraft Custom screenshots with a BC7 DDS and editable mip levels, and the DDS export controls | Artwork: public domain, Hokusai, c. 1831, [The Great Wave off Kanagawa](https://commons.wikimedia.org/wiki/File:The_Great_Wave_off_Kanagawa.jpg). UI: this project, MIT OR Apache-2.0. |
 | `photocraft-demo.jpg` | Photocraft UI screenshot (rendered offscreen with `cargo run -p photocraft-ui-egui --example snapshot`) editing *The Great Wave off Kanagawa*, Katsushika Hokusai, c. 1831 | Artwork: public domain, [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Tsunami_by_hokusai_19th_century.jpg). UI: this project. |
 | `photocraft-layer-styles.jpg` | Photocraft UI screenshot (offscreen snapshot) with *Earthrise*, William Anders, Apollo 8, 24 December 1968 (NASA photograph) | Artwork: public domain, [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:NASA-Apollo8-Dec24-Earthrise.jpg). UI: this project. |
 | `photocraft-masks.jpg` | Photocraft UI screenshot (offscreen snapshot) with *Girl with a Pearl Earring*, Johannes Vermeer, c. 1665 | Artwork: public domain, [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:1665_Girl_with_a_Pearl_Earring.jpg). UI: this project. |
@@ -19,5 +20,3 @@ Screenshots must use famous public-domain artwork (or content made in the app), 
 | File | Content | Source / licence |
 |---|---|---|
 | `assets/dict/en_US-scowl-50.txt.gz` | English word list (72,403 words, American spelling) for Edit › Check Spelling | [SCOWL](http://wordlist.aspell.net/) 2020.12.07, size 50, by Kevin Atkinson: permissive licence (use, copy, modify, distribute and sell, keeping the notice); full text and build recipe in `assets/dict/LICENSE-SCOWL.txt`. |
-
-| `photocraft-custom-dds-edit.png`, `photocraft-custom-dds-export.png` | Native PhotoCraft Custom screenshots with a BC7 DDS and editable mip levels, and the DDS export controls | Artwork: public domain, Hokusai, c. 1831, [The Great Wave off Kanagawa](https://commons.wikimedia.org/wiki/File:The_Great_Wave_off_Kanagawa.jpg). UI: this project, MIT OR Apache-2.0. |
