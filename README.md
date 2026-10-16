@@ -30,12 +30,18 @@ See the [linked-object workflow and limits](docs/c3-objects.md).
 
 ### Live C3 model previews
 
+- **Animated mesh effects, particles and trails.** Client PartEffect and Action3DEffect bindings attach the appropriate effects to weapons, garments, armor and other registered objects. PHY through PHY5 and RAW/KKEY/XKEY/ZKEY animation, socket motion, texture stages and supported client material modes are rendered together.
+- **Effect visibility and playback.** Toggle all effects, the base object, mesh effects, particles or trails, and show/hide individual groups, files and mesh parts. Pause/Play, Restart, Step, Time and Speed control animation. Show all object textures to edit linked materials live.
+- **Close-up camera controls.** Wheel and Zoom slider cover 0.1×–1000×. Fit model centers the base mesh independently of large effects while keeping them visible; Fit all restores the visible scene. Panning scales with zoom, and close-up magnification avoids moving the camera inside the fitted mesh.
+
 - **A dedicated 3D pane on the right.** Open a texture inside an Eudemons client and the editor searches for its corresponding C3 model. Select **Client folder** for textures copied outside the client.
 - **Live texture editing.** Painting, layers, masks, adjustments and undo/redo update the model while you work. Preview the visible composite or an individual DDS surface layer.
-- **Free rotation and inspection.** Drag to rotate in any direction, including the underside; wheel to zoom; Shift-drag or middle-drag to pan. Front, Back, Side, Top and Fit provide quick views.
+- **Free rotation and inspection.** Drag to rotate in any direction, including the underside; wheel to zoom; Shift-drag or middle-drag to pan. Front, Back, Side, Top, Fit model and Fit all provide quick views.
 - **Manual mesh replacement.** Use **Load mesh**, or right-click the viewport and choose **Load different C3 mesh**, to use another model with the current texture. Multiple automatic matches are selectable.
 - **Multipart controls.** Choose which mesh parts are visible and which receive the edited texture. Other parts use their original textures when available. Lighting, transparency, UV flipping and up-axis controls accommodate different models; Eudemons defaults to -Z.
-- **Broad C3 lookup and parsing.** Client registry aliases, differing mesh/texture IDs, conventional filenames and DawnPack v1001 resources are supported. The importer handles PHY through PHY5 geometry and RAW/KKEY/XKEY/ZKEY motion layouts for the initial pose.
+- **Broad C3 lookup and parsing.** Client registry aliases, differing mesh/texture IDs, conventional filenames, C3Pack, TPI/TPD, DawnPack v1000/v1001 and WDF resources are supported. An explicitly opened extracted texture uses its available extracted companion meshes and materials, preserving their UV layout; ordinary client resources retain active package priority.
+
+See the [C3 effects guide](docs/c3-effects.md) for controls, supported formats and fidelity limits.
 
 ### Faster client lookup and mesh loading
 
@@ -54,7 +60,7 @@ In native comparisons on this machine with warmed filesystem caches, the first m
 - **Mip and colour controls:** keep, generate or remove mipmaps; generate volume depth levels; filter sRGB colour in linear light and alpha with premultiplied colour. Retain texture/normal channel values, with explicit colour signalling and compression quality controls.
 - **Decoder and validation fixes:** corrected BC3 colour/alpha decoding and DX10 premultiplied-alpha handling; added bounds, allocation, truncation and unsupported-setting checks. The [DDS guide](docs/dds.md) documents exact coverage and interoperability limits.
 
-The fork also retains PhotoCraft 0.8.2's newer editing tools and background file operations, uses a separate custom application identity and portable preferences, translates the added menu labels across the bundled language catalogs, and caps Cargo compilation at two concurrent jobs. Third-party license notices are included.
+The fork also retains PhotoCraft 0.8.2's newer editing tools and background file operations, uses a separate custom application identity and portable preferences, translates the added menu labels across the bundled language catalogs, and caps Cargo compilation at one job. Third-party license notices are included.
 
 ### Getting started with texture editing
 
@@ -65,11 +71,11 @@ The fork also retains PhotoCraft 0.8.2's newer editing tools and background file
 
 ### Verification and current limits
 
-The multipart update passed **19 C3 tests**, **2,702 UI tests** (12 existing ignored tests) and **115 native application tests**. Clippy with warnings denied, formatting, dependency layering and C3/UI WebAssembly checks passed; Photoshop menu parity remains 632/632. Native checks on copies of real client assets covered multipart garments, mounts, monsters, shared textures, helmets and static effects; tiled editing, live paint, undo/redo, camera preservation, visibility, DDS copy saving, parent-INI discovery and missing-resource handling. A missing-texture regression fixture completed in 94 ms without scanning an unrelated directory tree. TGA checks cover uncompressed/RLE 24/32-bit imports, editable alpha, layer transparency and save/reopen; a mixed DDS/TGA native scene also passed live editing and undo/redo.
+The current effects/camera update passed **58 C3 tests**, **22 focused preview tests**, C3/UI all-targets Clippy with warnings denied, formatting, dependency layering and WebAssembly checks including HEIF. Eight offscreen scenes verified close-up rendering, pause stability, unchanged document history and base-only framing with effects enabled. The exact optimized Windows executable passed nine desktop cases covering weapons, garments, armor, 1000× zoom, fit/reset and effect playback controls. These are separate runs from the earlier broader DDS/editor regression suites.
 
 A survey covered **94,573 C3 file occurrences** across local client trees. The importer accepted **41,405 of 41,406 loose files containing mesh geometry**; the rejected file had invalid motion counts. This measures parsing coverage, not visual verification of every model.
 
-The viewer shows a **static mesh pose**. Animation playback, particle/trail simulation and the complete client material/lighting pipeline remain outside its scope. Unsupported package formats need unpacking; missing secondary textures use a placeholder with a note. Client meshes and textures are read locally and are not bundled or modified by the preview.
+This is a standalone C3 preview, with the supported animation and material behaviors documented in the [effects guide](docs/c3-effects.md). The separate S3 XML engine used by some newer clients is not simulated, and universal pixel-identical client rendering is not claimed. Missing/unsupported resources remain explicit. Client meshes and textures are read locally and are not bundled or modified by the preview.
 
 See the [C3 + DDS release and checksums](https://github.com/73igg/soulcraft/releases/latest), [Combined verification report](https://github.com/73igg/soulcraft/releases/latest/download/VERIFICATION.md), and [DDS workflow verification](docs/dds-validation.md) for detailed results.
 

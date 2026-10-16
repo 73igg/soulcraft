@@ -54,6 +54,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ..Default::default()
         };
         let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), services);
+        app.ui.c3_preview.paused = true;
         if let Some(rs) = &cc.wgpu_render_state {
             app.set_wgpu(rs.clone());
         }

@@ -3,11 +3,15 @@
 #![forbid(unsafe_code)]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+pub mod animation;
 #[cfg(not(target_arch = "wasm32"))]
 mod archive;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod assets;
+pub mod material;
 pub mod math;
+#[cfg(not(target_arch = "wasm32"))]
+mod packed;
 mod reader;
 
 use reader::Reader;
@@ -47,6 +51,7 @@ pub struct Model {
     pub max: [f32; 3],
 }
 
+#[derive(Debug)]
 struct Binding {
     init: [f32; 16],
     bones: Vec<([u32; 2], [f32; 2])>,
@@ -359,6 +364,32 @@ pub fn decode(bytes: &[u8]) -> Result<Model> {
 pub fn texture_references(bytes: &[u8]) -> Result<Vec<String>> {
     let mut out = Vec::new();
     for (tag, payload) in chunks(bytes)? {
+        if matches!(&tag, b"PTCL" | b"PTCX" | b"PTC3") {
+            let mut r = Reader::new(payload);
+            r.name()?;
+            out.push(r.name()?);
+            if out.len() > MAX_MESHES {
+                return Err(Error("too many material references".into()));
+            }
+            continue;
+        }
+        if tag == *b"SHAP" {
+            let mut r = Reader::new(payload);
+            r.name()?;
+            let splines = r.u32()? as usize;
+            if splines > 4096 {
+                return Err(Error("too many shape splines".into()));
+            }
+            for _ in 0..splines {
+                let points = r.u32()? as usize;
+                r.take(points.checked_mul(12).ok_or_else(|| Error("shape point size overflow".into()))?)?;
+            }
+            out.push(r.name()?);
+            if out.len() > MAX_MESHES {
+                return Err(Error("too many material references".into()));
+            }
+            continue;
+        }
         if !matches!(&tag, b"PHY " | b"PHY2" | b"PHY3" | b"PHY4" | b"PHY5") {
             continue;
         }

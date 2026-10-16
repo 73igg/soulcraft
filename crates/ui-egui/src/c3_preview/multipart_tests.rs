@@ -34,6 +34,11 @@ fn workspace_app() -> (PhotocraftApp, DocId, DocId) {
         texture_slots: vec![Some(0), Some(0), Some(1)],
         object_id: Some("armor.ini:outfit".into()),
         title: "Outfit".into(),
+        animations: Vec::new(),
+        effects: Vec::new(),
+        materials: Vec::new(),
+        mix_slots: Vec::new(),
+        mix_textures: Vec::new(),
     };
     app.c3_preview.docs.insert(owner, DocPreview { source: "body.dds".into(), loaded: Some(loaded), ..Default::default() });
     workspace::sync_documents(&mut app);
@@ -42,6 +47,93 @@ fn workspace_app() -> (PhotocraftApp, DocId, DocId) {
 
 fn invoke(app: &mut PhotocraftApp, id: &str, params: Value) -> Result<Value, String> {
     menu(app, &egui::Context::default(), id, &params).unwrap()
+}
+
+fn with_effect(app: &mut PhotocraftApp, owner: DocId) {
+    let mut payload = Vec::new();
+    for name in ["emitter", "test.dds"] {
+        payload.extend((name.len() as u32).to_le_bytes());
+        payload.extend(name.as_bytes());
+    }
+    for value in [1u32, 1, 2, 0, 0] {
+        payload.extend(value.to_le_bytes());
+    }
+    let mut bytes = b"MAXFILE C3 00001".to_vec();
+    bytes.extend(b"PTCL");
+    bytes.extend((payload.len() as u32).to_le_bytes());
+    bytes.extend(payload);
+    let asset = Arc::new(photocraft_c3::animation::AnimatedModel::decode(&bytes).unwrap());
+    let loaded = app.c3_preview.docs.get_mut(&owner).unwrap().loaded.as_mut().unwrap();
+    loaded.effects = vec![effects::EffectGroup {
+        key: "super".into(),
+        label: "Super weapon".into(),
+        socket: "v_r_weapon".into(),
+        source: "test catalog".into(),
+        visible: true,
+        note: None,
+    }];
+    loaded.animations = vec![
+        effects::SceneAnimation { asset: asset.clone(), range: 0..2, material: Default::default(), timing: Default::default(), effect: None, parent: None },
+        effects::SceneAnimation { asset, range: 2..3, material: Default::default(), timing: Default::default(), effect: Some(0), parent: None },
+    ];
+    loaded.materials = vec![Default::default(); 3];
+}
+
+#[test]
+fn embedded_particles_follow_the_effect_switch_independently_of_the_base_mesh() {
+    let (mut app, owner, _) = workspace_app();
+    with_effect(&mut app, owner);
+    let loaded = app.c3_preview.docs.get_mut(&owner).unwrap().loaded.as_mut().unwrap();
+    loaded.animations[1].effect = None;
+    Arc::make_mut(&mut loaded.model).meshes[2].variant = "Particles".into();
+    app.ui.c3_preview.effects_enabled = false;
+    assert_eq!(effects::visibility(loaded, &app.ui.c3_preview), [true, true, false]);
+    app.ui.c3_preview.effects_enabled = true;
+    app.ui.c3_preview.base_visible = false;
+    assert_eq!(effects::visibility(loaded, &app.ui.c3_preview), [false, false, true]);
+}
+
+#[test]
+fn effect_switches_playback_and_piece_materials_are_independent_view_state() {
+    let (mut app, owner, _) = workspace_app();
+    with_effect(&mut app, owner);
+    let revision = app.session.active().unwrap().revision;
+    invoke(&mut app, "preview.c3.playback", json!({"time":1.25,"paused":false,"speed":2.0})).unwrap();
+    assert!(!app.ui.c3_preview.paused);
+    assert_eq!(app.c3_preview.docs[&owner].seconds, 1.25);
+    invoke(&mut app, "preview.c3.playback", json!({"paused":true,"effects":false})).unwrap();
+    assert!(app.ui.c3_preview.paused);
+    assert_eq!(effects::visibility(app.c3_preview.docs[&owner].loaded.as_ref().unwrap(), &app.ui.c3_preview), [true, true, false]);
+    invoke(&mut app, "preview.c3.playback", json!({"effects":true,"base":false})).unwrap();
+    assert_eq!(effects::visibility(app.c3_preview.docs[&owner].loaded.as_ref().unwrap(), &app.ui.c3_preview), [false, false, true]);
+    invoke(&mut app, "preview.c3.playback", json!({"group":0,"visible":false})).unwrap();
+    assert_eq!(effects::visibility(app.c3_preview.docs[&owner].loaded.as_ref().unwrap(), &app.ui.c3_preview), [false; 3]);
+    invoke(&mut app, "preview.c3.playback", json!({"material":{"piece":1,"src":2,"dst":2,"depthWrite":false,"scale":2.5,"offset":[1.,2.,3.],"frameMs":40}}))
+        .unwrap();
+    let loaded = app.c3_preview.docs[&owner].loaded.as_ref().unwrap();
+    assert_eq!(loaded.materials[2].blend, [2, 2]);
+    assert_eq!(loaded.materials[0].blend, [5, 6]);
+    assert_eq!(loaded.animations[1].timing.offset, [1., 2., 3.]);
+    assert_eq!(loaded.animations[1].material.scale, 2.5);
+    for params in [
+        json!({"time":-1}),
+        json!({"speed":0}),
+        json!({"group":999,"visible":true}),
+        json!({"time":3,"visible":true}),
+        json!({"material":{"piece":1,"src":0,"scale":5.}}),
+        json!({"material":{"piece":999,"src":1}}),
+        json!({"material":{"piece":1,"offset":[1,2]}}),
+        json!({"material":{"piece":1,"scale":8,"cull":4}}),
+        json!({"material":{"piece":1,"uvStep":-1}}),
+        json!({"material":{"piece":1,"frameOffset":"no"}}),
+        json!({"material":{"piece":1,"loopOnce":"yes"}}),
+        json!({"paused":"yes"}),
+        json!({"seed":-1}),
+    ] {
+        assert!(invoke(&mut app, "preview.c3.playback", params).is_err());
+    }
+    assert_eq!(app.c3_preview.docs[&owner].loaded.as_ref().unwrap().animations[1].material.scale, 2.5);
+    assert_eq!(app.session.active().unwrap().revision, revision);
 }
 
 #[test]

@@ -119,6 +119,10 @@ fn invalid_settings_are_atomic_and_invalid_camera_values_do_not_escape() {
         json!({"lit":true,"alpha":99}),
         json!({"lit":true,"rotation":[0,0,0,0]}),
         json!({"distance":0}),
+        json!({"zoom":0.01}),
+        json!({"zoom":1001}),
+        json!({"zoom":"close"}),
+        json!({"zoom":10,"distance":2}),
         json!({"flipV":"yes"}),
         json!({"pan":[1e30,0]}),
         json!({"root":"wrong"}),
@@ -126,6 +130,23 @@ fn invalid_settings_are_atomic_and_invalid_camera_values_do_not_escape() {
         assert!(settings(&mut app, &params).is_err());
         assert_eq!(app.ui.c3_preview, before);
     }
+}
+
+#[test]
+fn close_zoom_and_model_fit_commands_do_not_require_or_edit_a_document() {
+    let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+    let ctx = egui::Context::default();
+    settings(&mut app, &json!({"zoom":1000})).unwrap();
+    assert!((app.ui.c3_preview.camera.zoom_factor() - 1000.).abs() < 0.001);
+    assert_eq!(app.ui.c3_preview.camera.distance, 1.15);
+    let before = app.ui.c3_preview.camera.clone();
+    for params in [json!({"fit":false}), json!({"fit":"wrong"})] {
+        assert!(menu(&mut app, &ctx, "preview.c3.reset", &params).unwrap().is_err());
+        assert_eq!(app.ui.c3_preview.camera, before);
+    }
+    assert!(menu(&mut app, &ctx, "preview.c3.reset", &json!({"fit":"model"})).unwrap().is_ok());
+    assert_eq!(app.ui.c3_preview.camera, Camera::default());
+    assert!(app.session.active().is_none());
 }
 
 #[test]
@@ -182,6 +203,11 @@ fn mesh_arrives_before_textures_and_completion_preserves_part_choices() {
                 texture_slots: vec![None],
                 object_id: None,
                 title: "Body".into(),
+                animations: Vec::new(),
+                effects: Vec::new(),
+                materials: vec![Default::default()],
+                mix_slots: Vec::new(),
+                mix_textures: Vec::new(),
             }),
         })
     };
@@ -192,6 +218,7 @@ fn mesh_arrives_before_textures_and_completion_preserves_part_choices() {
     let loaded = runtime.docs.get_mut(&id).unwrap().loaded.as_mut().unwrap();
     loaded.selected[0] = false;
     loaded.visible[0] = false;
+    loaded.materials[0].scale = 2.5;
     assert!(tx.send(found(true)).is_ok());
     runtime.poll();
     assert!(runtime.discovery.is_none());
@@ -200,6 +227,7 @@ fn mesh_arrives_before_textures_and_completion_preserves_part_choices() {
     assert!(Arc::ptr_eq(&loaded.model, &model));
     assert_eq!(loaded.selected, [false]);
     assert_eq!(loaded.visible, [false]);
+    assert_eq!(loaded.materials[0].scale, 2.5);
 }
 
 #[test]

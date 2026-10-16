@@ -80,6 +80,13 @@ pub(super) fn sync_documents(app: &mut PhotocraftApp) {
                             *target = Some(image.clone());
                         }
                     }
+                    for (slots, targets) in loaded.mix_slots.iter().zip(&mut loaded.mix_textures) {
+                        for (slot, target) in slots.iter().zip(targets) {
+                            if *slot == Some(index) {
+                                *target = Some(image.clone());
+                            }
+                        }
+                    }
                     preview.saved_textures.insert(index, (id, *revision, image.clone()));
                 }
             }
@@ -99,7 +106,7 @@ pub(super) fn sync_documents(app: &mut PhotocraftApp) {
             && let Some(loaded) = app.c3_preview.docs.get(&owner).and_then(|preview| preview.loaded.as_ref())
             && let Some(gpu) = &mut app.c3_preview.gpu
         {
-            gpu.forget_texture(asset, &loaded.textures);
+            gpu.forget_texture(asset, &loaded.textures, &loaded.mix_textures);
         }
     }
 }
@@ -118,7 +125,13 @@ pub(super) fn upload_document(runtime: &mut Runtime, id: DocId) {
         if let Some(asset) = asset {
             if changed {
                 let slots = loaded.texture_slots.iter().enumerate().filter_map(|(index, slot)| (*slot == Some(asset)).then_some(index)).collect::<Vec<_>>();
-                gpu.upload_slots(asset, &slots, &image);
+                let mix = loaded
+                    .mix_slots
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(index, slots)| slots.iter().enumerate().filter_map(move |(stage, slot)| (*slot == Some(asset)).then_some((index, stage))))
+                    .collect::<Vec<_>>();
+                gpu.upload_slots(asset, &slots, &mix, &image);
             }
             if runtime.active == Some(id) {
                 if runtime.edited_doc != Some(id) && (loaded.object_id.is_some() || !loaded.assets.get(asset).is_some_and(|asset| asset.source)) {
@@ -329,9 +342,24 @@ pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         ui.label(&preview.status);
         return;
     };
+    let groups = loaded.effects.clone();
     let (title, pieces, model, objects, assets) =
         (loaded.title.clone(), loaded.pieces.clone(), loaded.model.clone(), preview.objects.clone(), loaded.assets.clone());
     ui.label(egui::RichText::new(title).strong());
+    if !groups.is_empty() {
+        ui.checkbox(&mut app.ui.c3_preview.effects_enabled, "Show effects");
+        ui.collapsing(format!("{} effect groups", groups.len()), |ui| {
+            for (index, group) in groups.iter().enumerate() {
+                let mut on = group.visible;
+                if ui.checkbox(&mut on, &group.label).on_hover_text(format!("{}\nSocket: {}", group.source, group.socket)).changed() {
+                    invoke(app, ui, "preview.c3.playback", json!({"group":index,"visible":on}));
+                }
+                if let Some(note) = &group.note {
+                    ui.label(egui::RichText::new(note).small());
+                }
+            }
+        });
+    }
     if objects.len() > 1 {
         let mut choose = None;
         egui::ComboBox::from_id_salt("c3-object-choice").selected_text(format!("{} INI objects", objects.len())).show_ui(ui, |ui| {
@@ -383,6 +411,7 @@ pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         }
                     }
                 });
+                super::effects::material_controls(app, ui, owner, index);
                 ui.collapsing(format!("{} mesh parts", piece.range.len()), |ui| {
                     for part_index in piece.range.clone() {
                         if let Some(mesh) = model.meshes.get(part_index) {

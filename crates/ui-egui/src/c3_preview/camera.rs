@@ -5,14 +5,29 @@ use serde::{Deserialize, Serialize};
 pub struct Camera {
     pub rotation: [f32; 4],
     pub distance: f32,
+    /// Optical magnification extends close-up zoom without moving inside the mesh.
+    pub magnification: f32,
     pub pan: [f32; 2],
 }
 impl Default for Camera {
     fn default() -> Self {
-        Self { rotation: [0., 0., 0., 1.], distance: 3.4, pan: [0.; 2] }
+        Self { rotation: [0., 0., 0., 1.], distance: 3.4, magnification: 1., pan: [0.; 2] }
     }
 }
 impl Camera {
+    pub const MIN_ZOOM: f32 = 0.1;
+    pub const MAX_ZOOM: f32 = 1000.;
+
+    pub fn zoom_factor(&self) -> f32 {
+        3.4 * self.magnification / self.distance
+    }
+    pub fn set_zoom(&mut self, factor: f32) {
+        if factor.is_finite() {
+            let factor = factor.clamp(Self::MIN_ZOOM, Self::MAX_ZOOM);
+            self.distance = (3.4 / factor).clamp(1.15, 30.);
+            self.magnification = factor * self.distance / 3.4;
+        }
+    }
     pub fn reset(&mut self) {
         *self = Self::default();
     }
@@ -47,12 +62,12 @@ impl Camera {
     }
     pub fn zoom(&mut self, delta: f32) {
         if delta.is_finite() {
-            self.distance = (self.distance * (-delta.clamp(-1000., 1000.) * 0.002).exp()).clamp(1.15, 30.);
+            self.set_zoom(self.zoom_factor() * (delta.clamp(-1000., 1000.) * 0.002).exp());
         }
     }
     pub fn move_by(&mut self, delta: egui::Vec2, viewport: egui::Vec2) {
         if viewport.y > 1. && viewport.x > 1. {
-            let scale = 2. * self.distance / (viewport.y * 2.4142137 * (viewport.x / viewport.y).min(1.));
+            let scale = 2. * self.distance / (viewport.y * 2.4142137 * self.magnification * (viewport.x / viewport.y).min(1.));
             self.pan[0] = (self.pan[0] + delta.x * scale).clamp(-30., 30.);
             self.pan[1] = (self.pan[1] - delta.y * scale).clamp(-30., 30.);
         }
@@ -101,13 +116,35 @@ mod tests {
             c.zoom(-100000.);
         }
         assert_eq!(c.distance, 30.);
+        assert!((c.zoom_factor() - Camera::MIN_ZOOM).abs() < 1.0e-6);
         for _ in 0..10 {
             c.zoom(100000.);
         }
-        assert!(c.distance >= 1.15);
+        assert_eq!(c.distance, 1.15);
+        assert!((c.zoom_factor() - Camera::MAX_ZOOM).abs() < 0.001);
+        c.set_zoom(1.);
         c.move_by(egui::vec2(100000., 100000.), egui::vec2(300., 200.));
         assert_eq!(c.pan, [30., -30.]);
         c.reset();
         assert_eq!(c, Camera::default());
+    }
+
+    #[test]
+    fn close_zoom_keeps_the_eye_outside_and_pan_tracks_screen_pixels() {
+        let mut camera = Camera::default();
+        camera.set_zoom(100.);
+        assert_eq!(camera.distance, 1.15);
+        assert!(camera.magnification > 30.);
+        let viewport = egui::vec2(300., 400.);
+        camera.move_by(egui::vec2(20., -10.), viewport);
+        let focal = 2.4142137 * camera.magnification * (viewport.x / viewport.y).min(1.);
+        let pixels = camera.pan.map(|p| p * focal * viewport.y / (2. * camera.distance));
+        assert!((pixels[0] - 20.).abs() < 0.001);
+        assert!((pixels[1] - 10.).abs() < 0.001);
+        let before = camera.clone();
+        camera.set_zoom(f32::NAN);
+        assert_eq!(camera, before);
+        let legacy: Camera = serde_json::from_str(r#"{"distance":3.4}"#).unwrap();
+        assert_eq!(legacy.zoom_factor(), 1.);
     }
 }

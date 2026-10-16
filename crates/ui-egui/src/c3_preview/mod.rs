@@ -1,5 +1,6 @@
 //! C3 preview is view state: it never edits a client mesh or document history.
 mod camera;
+mod effects;
 mod gpu;
 #[cfg(test)]
 mod multipart_tests;
@@ -46,6 +47,16 @@ pub struct State {
     pub texture_layer: Option<u64>,
     /// Add the object list to an older customized dock once, preserving its layout.
     pub object_tab_added: bool,
+    pub effects_enabled: bool,
+    pub effect_meshes: bool,
+    pub particles: bool,
+    pub trails: bool,
+    pub base_visible: bool,
+    pub paused: bool,
+    pub speed: f64,
+    pub seed: u32,
+    pub client_materials: bool,
+    pub background: [f32; 3],
 }
 impl Default for State {
     fn default() -> Self {
@@ -61,6 +72,16 @@ impl Default for State {
             up_axis: 0,
             texture_layer: None,
             object_tab_added: false,
+            effects_enabled: true,
+            effect_meshes: true,
+            particles: true,
+            trails: true,
+            base_visible: true,
+            paused: false,
+            speed: 1.,
+            seed: 0,
+            client_materials: true,
+            background: [0.075; 3],
         }
     }
 }
@@ -83,6 +104,11 @@ pub(super) struct Loaded {
     pub texture_slots: Vec<Option<usize>>,
     pub object_id: Option<String>,
     pub title: String,
+    pub animations: Vec<effects::SceneAnimation>,
+    pub effects: Vec<effects::EffectGroup>,
+    pub materials: Vec<photocraft_c3::material::Material>,
+    pub mix_slots: Vec<[Option<usize>; 3]>,
+    pub mix_textures: Vec<[Option<Arc<Image>>; 3]>,
 }
 #[derive(Clone)]
 pub(super) struct Piece {
@@ -151,6 +177,8 @@ struct DocPreview {
     tiled: bool,
     opening_textures: std::collections::HashSet<usize>,
     saved_textures: HashMap<usize, (DocId, u64, Arc<Image>)>,
+    seconds: f64,
+    last_time: Option<f64>,
 }
 #[derive(Default)]
 pub(crate) struct Runtime {
@@ -249,7 +277,8 @@ impl Runtime {
             let _ = (source, root, object, cancel.as_ref(), ctx);
             let result = manual.ok_or_else(|| "Select a C3 model with Load mesh; automatic client discovery is available on desktop".into()).and_then(
                 |(path, bytes)| {
-                    let model = Arc::new(photocraft_c3::decode(&bytes).map_err(|e| e.to_string())?);
+                    let animated = Arc::new(photocraft_c3::animation::AnimatedModel::decode(&bytes).map_err(|e| e.to_string())?);
+                    let model = Arc::new(animated.model.clone());
                     let count = model.meshes.len();
                     Ok(Found {
                         complete: true,
@@ -269,6 +298,18 @@ impl Runtime {
                             texture_slots: vec![None; count],
                             object_id: None,
                             title: "Selected C3".into(),
+                            animations: vec![effects::SceneAnimation {
+                                asset: animated,
+                                range: 0..count,
+                                timing: Default::default(),
+                                material: Default::default(),
+                                effect: None,
+                                parent: None,
+                            }],
+                            effects: Vec::new(),
+                            materials: vec![Default::default(); count],
+                            mix_slots: vec![[None; 3]; count],
+                            mix_textures: vec![[None, None, None]; count],
                         }),
                     })
                 },
@@ -315,6 +356,11 @@ impl Runtime {
                                     p.hidden_textures.clear();
                                 }
                                 if let Some(previous) = &p.loaded {
+                                    for group in &mut loaded.effects {
+                                        if let Some(old) = previous.effects.iter().find(|old| old.key == group.key) {
+                                            group.visible = old.visible;
+                                        }
+                                    }
                                     for piece in &mut loaded.pieces {
                                         if let Some(old) = previous.pieces.iter().find(|old| old.key == piece.key) {
                                             piece.visible = old.visible;
@@ -324,6 +370,13 @@ impl Runtime {
                                 for (slot, texture) in loaded.texture_slots.iter().zip(&mut loaded.textures) {
                                     if let Some((_, _, saved)) = slot.and_then(|slot| p.saved_textures.get(&slot)) {
                                         *texture = Some(saved.clone());
+                                    }
+                                }
+                                for (slots, textures) in loaded.mix_slots.iter().zip(&mut loaded.mix_textures) {
+                                    for (slot, texture) in slots.iter().zip(textures) {
+                                        if let Some((_, _, saved)) = slot.and_then(|slot| p.saved_textures.get(&slot)) {
+                                            *texture = Some(saved.clone());
+                                        }
                                     }
                                 }
                                 p.warnings.extend(loaded.warnings.iter().cloned());
@@ -337,9 +390,20 @@ impl Runtime {
                                     loaded.selected.clone_from(&previous.selected);
                                     loaded.visible.clone_from(&previous.visible);
                                 }
+                                if same_model && let Some(previous) = &p.loaded {
+                                    loaded.materials.clone_from(&previous.materials);
+                                    for animation in &mut loaded.animations {
+                                        if let Some(old) =
+                                            previous.animations.iter().find(|old| old.range == animation.range && Arc::ptr_eq(&old.asset, &animation.asset))
+                                        {
+                                            animation.material = old.material.clone();
+                                            animation.timing = old.timing.clone();
+                                        }
+                                    }
+                                }
                                 if same_model && self.gpu_doc == Some(d.id) {
                                     if let Some(gpu) = &mut self.gpu {
-                                        gpu.secondary_textures(&loaded.textures);
+                                        gpu.secondary_textures(&loaded.textures, &loaded.mix_textures);
                                     }
                                 } else {
                                     self.gpu_doc = None;
@@ -559,7 +623,7 @@ fn upkeep(app: &mut PhotocraftApp, ctx: &egui::Context) {
         && let Some(p) = app.c3_preview.docs.get(&owner)
         && let (Some(gpu), Some(loaded)) = (&mut app.c3_preview.gpu, &p.loaded)
     {
-        gpu.model(loaded.model.clone(), &loaded.textures);
+        gpu.model(loaded.model.clone(), &loaded.textures, &loaded.mix_textures);
         app.c3_preview.uploaded_keys.clear();
         app.c3_preview.edited_doc = None;
         if let Some(image) = &p.image {
@@ -629,6 +693,12 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             saved.texture_layer = None;
             saved.alpha = saved.alpha.min(2);
             saved.up_axis = saved.up_axis.min(3);
+            if !saved.speed.is_finite() || !(0.05..=8.).contains(&saved.speed) {
+                saved.speed = 1.;
+            }
+            if saved.background.iter().any(|v| !v.is_finite() || !(0.0..=1.0).contains(v)) {
+                saved.background = [0.075; 3];
+            }
             app.ui.c3_preview = saved;
         }
         app.c3_preview.settings_loaded = true;
@@ -650,6 +720,8 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     if app.c3_preview.discovery.is_some() || app.c3_preview.texture_job.is_some() {
         ctx.request_repaint_after(std::time::Duration::from_millis(33));
     }
+    let clock_owner = workspace::scene_id(app);
+    effects::clock(app, &ctx, clock_owner);
     if !visible(app) {
         app.c3_preview.rect = None;
         return;
@@ -731,10 +803,17 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         app.ui.c3_preview.camera.preset(view);
                     }
                 }
-                if ui.small_button("Fit").clicked() {
-                    app.ui.c3_preview.camera.reset();
+                if ui.small_button("Fit model").on_hover_text("Center and fit the base mesh, keeping effects visible.").clicked() {
+                    reset_camera(app, true);
+                }
+                if ui.small_button("Fit all").on_hover_text("Fit all currently visible meshes and effects.").clicked() {
+                    reset_camera(app, false);
                 }
             });
+            let mut zoom = app.ui.c3_preview.camera.zoom_factor();
+            if ui.add(egui::Slider::new(&mut zoom, Camera::MIN_ZOOM..=Camera::MAX_ZOOM).logarithmic(true).text("Zoom").suffix("×")).changed() {
+                app.ui.c3_preview.camera.set_zoom(zoom);
+            }
             ui.horizontal_wrapped(|ui| {
                 ui.checkbox(&mut app.ui.c3_preview.lit, "Lighting");
                 ui.checkbox(&mut app.ui.c3_preview.flip_v, "Flip V");
@@ -751,6 +830,7 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         }
                     });
             });
+            effects::controls(app, ui, id);
             ui.horizontal(|ui| {
                 ui.label("Up axis:");
                 egui::ComboBox::from_id_salt("c3-up-axis")
@@ -837,7 +917,7 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 }
             }
             if response.double_clicked() {
-                app.ui.c3_preview.camera.reset();
+                reset_camera(app, false);
             }
             let state = &app.ui.c3_preview;
             let mut rendered = false;
@@ -846,7 +926,7 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 && let Some(gpu) = app.c3_preview.gpu.as_mut()
             {
                 let size = [(rect.width() * ctx.pixels_per_point()).ceil() as u32, (rect.height() * ctx.pixels_per_point()).ceil() as u32];
-                if let Some(texture) = gpu.draw(size, state, &loaded.selected, &workspace::effective_visibility(loaded)) {
+                if let Some(texture) = gpu.draw(size, state, loaded, id.and_then(|id| app.c3_preview.docs.get(&id)).map(|p| p.seconds).unwrap_or(0.)) {
                     painter.image(texture, rect, egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1., 1.)), egui::Color32::WHITE);
                     rendered = true;
                 }
@@ -876,8 +956,12 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                     ui.close();
                 }
                 ui.separator();
+                if ui.button("Fit base model").clicked() {
+                    reset_camera(app, true);
+                    ui.close();
+                }
                 if ui.button("Reset rotation, zoom and pan").clicked() {
-                    app.ui.c3_preview.camera.reset();
+                    reset_camera(app, false);
                     ui.close();
                 }
                 ui.checkbox(&mut app.ui.c3_preview.automatic, "Automatically match new textures");
@@ -1030,10 +1114,17 @@ pub(crate) fn menu(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, param
         }
         "preview.c3.rematch" => rematch(app, ctx),
         "preview.c3.clientFolder" => pick_root(app, ctx),
-        "preview.c3.reset" => {
-            app.ui.c3_preview.camera.reset();
-            Ok(Value::Null)
-        }
+        "preview.c3.reset" => match params.get("fit") {
+            None | Some(Value::String(_)) if params.get("fit").is_none_or(|value| value == "visible") => {
+                reset_camera(app, false);
+                Ok(Value::Null)
+            }
+            Some(Value::String(value)) if value == "model" => {
+                reset_camera(app, true);
+                Ok(Value::Null)
+            }
+            _ => Err("fit must be model or visible".into()),
+        },
         "preview.c3.view" => {
             if let Some(view) = params.get("view").and_then(Value::as_str) {
                 if app.ui.c3_preview.camera.preset(view) { Ok(Value::Null) } else { Err("view must be front, back, left, right, top, or bottom".into()) }
@@ -1042,6 +1133,7 @@ pub(crate) fn menu(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, param
             }
         }
         "preview.c3.settings" => settings(app, params),
+        "preview.c3.playback" => effects::command(app, params),
         "preview.c3.part" => (|| {
             let index = params
                 .get("index")
@@ -1079,10 +1171,9 @@ fn boolean(p: &Value, key: &str) -> Result<Option<bool>, String> {
 }
 fn settings(app: &mut PhotocraftApp, params: &Value) -> Result<Value, String> {
     let object = params.as_object().ok_or_else(|| "preview settings must be an object".to_string())?;
-    if let Some(key) = object
-        .keys()
-        .find(|k| !matches!(k.as_str(), "enabled" | "automatic" | "lit" | "flipV" | "alpha" | "rotation" | "distance" | "pan" | "textureLayer" | "upAxis"))
-    {
+    if let Some(key) = object.keys().find(|k| {
+        !matches!(k.as_str(), "enabled" | "automatic" | "lit" | "flipV" | "alpha" | "rotation" | "distance" | "zoom" | "pan" | "textureLayer" | "upAxis")
+    }) {
         return Err(format!("unknown C3 preview setting: {key}"));
     }
     let mut state = app.ui.c3_preview.clone();
@@ -1110,6 +1201,14 @@ fn settings(app: &mut PhotocraftApp, params: &Value) -> Result<Value, String> {
     if let Some(v) = params.get("distance") {
         let distance = v.as_f64().filter(|n| n.is_finite() && (1.15..=30.).contains(n)).ok_or_else(|| "distance must be from 1.15 to 30".to_string())?;
         state.camera.distance = distance as f32;
+        state.camera.magnification = 1.;
+    }
+    if let Some(v) = params.get("zoom") {
+        if params.get("distance").is_some() {
+            return Err("specify zoom or distance, not both".into());
+        }
+        let zoom = v.as_f64().filter(|n| n.is_finite() && (0.1..=1000.).contains(n)).ok_or_else(|| "zoom must be from 0.1 to 1000".to_string())?;
+        state.camera.set_zoom(zoom as f32);
     }
     if let Some(v) = params.get("rotation") {
         let q: [f32; 4] = serde_json::from_value(v.clone()).map_err(|_| "rotation must be four finite quaternion values".to_string())?;
@@ -1144,8 +1243,10 @@ pub(crate) fn inspect(app: &PhotocraftApp) -> Value {
     let p = workspace::scene_id(app).and_then(|id| app.c3_preview.docs.get(&id));
     let active = app.session.active().and_then(|state| app.c3_preview.docs.get(&state.doc.id));
     let loaded = p.and_then(|preview| preview.loaded.as_ref());
-    let visibility = loaded.map(workspace::effective_visibility).unwrap_or_default();
+    let visibility = loaded.map(|loaded| effects::visibility(loaded, &app.ui.c3_preview)).unwrap_or_default();
     json!({
+        "time":p.map(|p|p.seconds),
+        "effects":loaded.map(|loaded|loaded.effects.iter().enumerate().map(|(index,group)|json!({"index":index,"name":group.label,"socket":group.socket,"source":group.source,"visible":group.visible,"note":group.note})).collect::<Vec<_>>()),
         "state":app.ui.c3_preview,"rect":app.c3_preview.rect.map(|r|[r.min.x,r.min.y,r.max.x,r.max.y]),
         "loading":app.c3_preview.discovery.is_some(),"textureUpdating":app.c3_preview.texture_job.is_some(),
         "status":p.map(|p|p.status.as_str()),"root":p.and_then(|p|p.root.as_deref()),"path":loaded.map(|l|l.path.as_str()),
@@ -1156,4 +1257,11 @@ pub(crate) fn inspect(app: &PhotocraftApp) -> Value {
         "parts":loaded.map(|l|l.model.meshes.iter().zip(&l.selected).enumerate().map(|(i,(m,s))|json!({"name":m.name,"variant":m.variant,"texture":m.texture,"vertices":m.vertices.len(),"triangles":m.indices.len()/3,"edited":s,"visible":visibility.get(i)})).collect::<Vec<_>>()),
         "warnings":p.map(|p|&p.warnings),"textureRevision":active.and_then(|p|p.key).map(|k|json!({"revision":k.revision,"preview":k.preview})),"textureSize":active.and_then(|p|p.image.as_ref()).map(|i|i.size)
     })
+}
+
+fn reset_camera(app: &mut PhotocraftApp, model_only: bool) {
+    app.ui.c3_preview.camera.reset();
+    if let Some(gpu) = &mut app.c3_preview.gpu {
+        gpu.fit(model_only);
+    }
 }

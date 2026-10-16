@@ -29,6 +29,7 @@ pub const UI_COMMANDS: &[(&str, &str, &[&str], Option<&str>)] = &[
     ("preview.c3.reset", "Reset C3 View", &[], None),
     ("preview.c3.view", "C3 View Preset", &[], None),
     ("preview.c3.settings", "C3 Preview Settings", &[], None),
+    ("preview.c3.playback", "C3 Effect Playback", &[], None),
     ("preview.c3.part", "C3 Mesh Part Settings", &[], None),
     ("preview.c3.object", "C3 Linked Object", &[], None),
     ("preview.c3.piece", "C3 Object Piece Visibility", &[], None),

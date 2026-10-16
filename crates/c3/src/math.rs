@@ -3,6 +3,9 @@
 use crate::{Error, Result};
 
 pub const IDENTITY: [f32; 16] = [1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.];
+pub fn multiply(a: &[f32; 16], b: &[f32; 16]) -> [f32; 16] {
+    std::array::from_fn(|i| (0..4).map(|k| a[i / 4 * 4 + k] * b[k * 4 + i % 4]).sum())
+}
 pub fn sub(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
@@ -15,6 +18,9 @@ pub fn normalize(v: [f32; 3]) -> [f32; 3] {
 }
 pub fn transform(v: [f32; 3], m: &[f32; 16]) -> [f32; 3] {
     [v[0] * m[0] + v[1] * m[4] + v[2] * m[8] + m[12], v[0] * m[1] + v[1] * m[5] + v[2] * m[9] + m[13], v[0] * m[2] + v[1] * m[6] + v[2] * m[10] + m[14]]
+}
+pub fn direction(v: [f32; 3], m: &[f32; 16]) -> [f32; 3] {
+    [v[0] * m[0] + v[1] * m[4] + v[2] * m[8], v[0] * m[1] + v[1] * m[5] + v[2] * m[9], v[0] * m[2] + v[1] * m[6] + v[2] * m[10]]
 }
 pub fn quaternion_matrix(q: [f32; 4], t: [f32; 3]) -> Result<[f32; 16]> {
     let len = q.iter().map(|v| v * v).sum::<f32>().sqrt();

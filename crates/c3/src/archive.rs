@@ -1,4 +1,4 @@
-//! Read-only DawnPack lookup. The index is read once; only a requested payload
+//! Read-only DawnPack/WDF lookup. The index is read once; only a requested payload
 //! is read from the archive, with explicit allocation and file bounds.
 use crate::{Error, MAX_FILE_BYTES, Result};
 use std::{
@@ -33,12 +33,19 @@ pub(crate) struct Archive {
     path: PathBuf,
     index: HashMap<u32, (u64, usize)>,
     length: u64,
+    forward_slashes: bool,
 }
 impl Archive {
     pub fn open(path: &Path) -> Result<Self> {
         let file = File::open(path).map_err(|e| Error(e.to_string()))?;
         let length = file.metadata().map_err(|e| Error(e.to_string()))?.len();
         let mut file = std::io::BufReader::with_capacity(64 * 1024, file);
+        let mut prefix = [0u8; 12];
+        file.read_exact(&mut prefix).map_err(|e| Error(e.to_string()))?;
+        if prefix.starts_with(b"PFDW") {
+            return Self::open_wdf(path, file, length, prefix);
+        }
+        file.seek(SeekFrom::Start(0)).map_err(|e| Error(e.to_string()))?;
         let mut header = [0u8; 40];
         file.read_exact(&mut header).map_err(|e| Error(e.to_string()))?;
         if !header.starts_with(b"DawnPack.TqDigital") {
@@ -47,7 +54,10 @@ impl Archive {
         let version = u32::from_le_bytes(
             header.get(32..36).ok_or_else(|| Error("truncated package version".into()))?.try_into().map_err(|_| Error("truncated version".into()))?,
         );
-        if version != 1001 {
+        if version == 1002 {
+            return Err(Error("DawnPack 1002 payload encryption requires unpacked client resources".into()));
+        }
+        if !(1000..=1001).contains(&version) {
             return Err(Error(format!("unsupported DawnPack version {version}")));
         }
         let count = u32::from_le_bytes(
@@ -62,19 +72,46 @@ impl Archive {
             let mut entry = [0u8; 12];
             file.read_exact(&mut entry).map_err(|e| Error(e.to_string()))?;
             let mut words = entry.as_chunks::<4>().0.iter().copied().map(u32::from_le_bytes);
-            let id = words.next().ok_or_else(|| Error("missing archive hash".into()))? ^ 0x95279527;
-            let size = (words.next().ok_or_else(|| Error("missing archive size".into()))? ^ 0x96120059) as usize;
-            let offset = (words.next().ok_or_else(|| Error("missing archive offset".into()))? ^ 0x99589958) as u64;
+            // Version1000 stores plain index words;1001 uses these masks.
+            let masks = if version == 1000 { [0; 3] } else { [0x95279527, 0x96120059, 0x99589958] };
+            let id = words.next().ok_or_else(|| Error("missing archive hash".into()))? ^ masks[0];
+            let size = (words.next().ok_or_else(|| Error("missing archive size".into()))? ^ masks[1]) as usize;
+            let offset = (words.next().ok_or_else(|| Error("missing archive offset".into()))? ^ masks[2]) as u64;
             if size > 0 && size <= MAX_FILE_BYTES && offset >= end && offset + (size as u64) <= length {
                 index.entry(id).or_insert((offset, size));
             }
         }
-        Ok(Self { path: path.into(), index, length })
+        Ok(Self { path: path.into(), index, length, forward_slashes: false })
+    }
+    fn open_wdf(path: &Path, mut file: impl Read + Seek, length: u64, header: [u8; 12]) -> Result<Self> {
+        let mut words = header.as_chunks::<4>().0.iter().copied().map(u32::from_le_bytes).skip(1);
+        let count = words.next().ok_or_else(|| Error("missing WDF entry count".into()))? as usize;
+        let start = u64::from(words.next().ok_or_else(|| Error("missing WDF index offset".into()))?);
+        let end = start + count as u64 * 16;
+        if count > 500_000 || start < 12 || end > length {
+            return Err(Error("WDF index exceeds its bounds or entry budget".into()));
+        }
+        file.seek(SeekFrom::Start(start)).map_err(|e| Error(e.to_string()))?;
+        let mut index = HashMap::with_capacity(count);
+        for _ in 0..count {
+            let mut entry = [0u8; 16];
+            file.read_exact(&mut entry).map_err(|e| Error(e.to_string()))?;
+            let mut words = entry.as_chunks::<4>().0.iter().copied().map(u32::from_le_bytes);
+            let id = words.next().ok_or_else(|| Error("missing WDF hash".into()))?;
+            let offset = u64::from(words.next().ok_or_else(|| Error("missing WDF asset offset".into()))?);
+            let size = words.next().ok_or_else(|| Error("missing WDF asset size".into()))? as usize;
+            let asset_end = offset + size as u64;
+            if size > 0 && size <= MAX_FILE_BYTES && offset >= 12 && asset_end <= length && (asset_end <= start || offset >= end) {
+                index.entry(id).or_insert((offset, size));
+            }
+        }
+        Ok(Self { path: path.into(), index, length, forward_slashes: true })
     }
     fn entry(&self, path: &str) -> Option<(u64, usize)> {
-        let path = path.replace('/', "\\").to_ascii_lowercase();
+        let separator = if self.forward_slashes { '/' } else { '\\' };
+        let path = if self.forward_slashes { path.replace('\\', "/") } else { path.replace('/', "\\") }.to_ascii_lowercase();
         self.index.get(&hash(&path)).copied().or_else(|| {
-            path.split_once('\\')
+            path.split_once(separator)
                 .filter(|(head, _)| matches!(*head, "c3" | "data" | "map" | "ani" | "sound" | "music"))
                 .and_then(|(_, tail)| self.index.get(&hash(tail)).copied())
         })

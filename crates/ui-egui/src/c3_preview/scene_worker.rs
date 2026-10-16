@@ -13,10 +13,12 @@ use std::{
     collections::HashMap,
     path::Path,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
 };
+
+static SCENE_LOADER: Mutex<()> = Mutex::new(());
 
 pub(super) fn discover(
     source: &str,
@@ -26,6 +28,10 @@ pub(super) fn discover(
     cancel: &AtomicBool,
     mut progress: impl FnMut(Found),
 ) -> FoundResult {
+    // Keep rapid document changes from inflating multiple client indexes at
+    // once. Waiting work observes cancellation before touching client assets.
+    let _loader = SCENE_LOADER.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    check_cancel(cancel)?;
     let inferred = Path::new(source).parent().and_then(catalog_root);
     let manual_root = manual.as_ref().and_then(|(path, _)| Path::new(path).parent()).and_then(catalog_root);
     let root_path = manual_root
@@ -41,10 +47,11 @@ pub(super) fn discover(
     let mut definitions = assets.as_ref().map(|assets| assets.objects_for_texture(source)).unwrap_or_default();
     let objects = definitions.iter().map(|object| (object.id.clone(), object.label.clone())).collect::<Vec<_>>();
     if let Some(id) = object_id {
-        let definition = assets
-            .as_ref()
-            .and_then(|assets| assets.object(id))
+        let definition = definitions
+            .iter()
+            .find(|definition| definition.id == id)
             .cloned()
+            .or_else(|| assets.as_ref().and_then(|assets| assets.object(id)).cloned())
             .ok_or_else(|| "The INI object is no longer available; refresh the client lookup".to_string())?;
         definitions = vec![definition];
     }
@@ -82,6 +89,11 @@ pub(super) fn discover(
                 texture_slots: loaded.texture_slots.clone(),
                 object_id: loaded.object_id.clone(),
                 title: loaded.title.clone(),
+                animations: loaded.animations.clone(),
+                effects: loaded.effects.clone(),
+                materials: loaded.materials.clone(),
+                mix_slots: loaded.mix_slots.clone(),
+                mix_textures: vec![[None, None, None]; loaded.model.meshes.len()],
             }),
         })
     };
@@ -131,6 +143,7 @@ fn asset_slot(
     map: &mut HashMap<String, usize>,
     texture: &str,
     source: &str,
+    origin: &str,
     known_source: bool,
     client: Option<&ClientAssets>,
 ) -> Option<usize> {
@@ -146,13 +159,13 @@ fn asset_slot(
     if let Some(index) = map.get(texture) {
         return Some(*index);
     }
-    if texture.is_empty() || assets.len() >= 64 {
+    if texture.is_empty() || assets.len() >= 128 {
         return None;
     }
     let index = assets.len();
     map.insert(texture.into(), index);
     assets.push(TextureAsset {
-        path: client.and_then(|client| client.editable_path(texture)).map(|path| path.to_string_lossy().into_owned()),
+        path: client.and_then(|client| client.editable_path_for_source(texture, Path::new(origin))).map(|path| path.to_string_lossy().into_owned()),
         key: texture.into(),
         bytes: None,
         source: false,
@@ -175,26 +188,100 @@ fn load(
         vec![TextureAsset { key: source_key.clone(), path: Path::new(source).is_file().then(|| source.to_string()), bytes: None, source: true, note: None }];
     let mut texture_map = HashMap::from([(source_key.clone(), 0usize)]);
     let mut pieces = Vec::new();
+    let mut animations = Vec::new();
+    let mut effect_groups = Vec::new();
+    let mut materials = Vec::new();
+    let mut mix_slots = Vec::new();
     let mut meshes = Vec::new();
     let mut slots = Vec::new();
     let mut visible = Vec::new();
+    let mut animation_bytes = 0usize;
     let mut vertex_count = 0usize;
     let mut index_count = 0usize;
     let mut warnings = Vec::new();
-    let requests = if let Some(object) = object {
-        object
-            .parts
-            .iter()
-            .map(|part| (format!("{}:{}", object.id, part.binding), part.mesh.clone().unwrap_or_default(), Vec::new(), part.texture.clone(), part.note.clone()))
-            .collect::<Vec<_>>()
+    let mut requests = Vec::new();
+    if let Some(object) = object {
+        let direct_effect = object.id.starts_with("3deffect");
+        if direct_effect {
+            effect_groups.push(super::effects::EffectGroup {
+                key: object.id.clone(),
+                label: object.label.clone(),
+                socket: String::new(),
+                source: object.id.clone(),
+                visible: true,
+                note: None,
+            });
+        }
+        for part in &object.parts {
+            let material = client.map(|client| client.material(&object.id, part.slot)).unwrap_or_default();
+            let timing = client.map(|client| client.part_timing(&object.id, part.slot)).unwrap_or_default();
+            requests.push((
+                format!("{}:{}", object.id, part.binding),
+                part.mesh.clone().unwrap_or_default(),
+                Vec::new(),
+                part.texture.clone(),
+                part.note.clone(),
+                material,
+                timing,
+                direct_effect.then_some(0),
+                String::new(),
+            ));
+        }
+        if let Some(client) = client {
+            for binding in client.effect_bindings(object) {
+                let group = effect_groups.len();
+                let definition = client.effect_object(&binding.effect);
+                effect_groups.push(super::effects::EffectGroup {
+                    key: binding.effect.clone(),
+                    label: binding.effect.clone(),
+                    socket: binding.socket.clone(),
+                    source: binding.source,
+                    visible: binding.enabled,
+                    note: definition.is_none().then(|| "Effect definition is unavailable in the selected client".into()),
+                });
+                if let Some(definition) = definition {
+                    for part in &definition.parts {
+                        requests.push((
+                            format!("{}:{}", binding.effect, part.binding),
+                            part.mesh.clone().unwrap_or_default(),
+                            Vec::new(),
+                            part.texture.clone(),
+                            part.note.clone(),
+                            client.material(&definition.id, part.slot),
+                            client.part_timing(&definition.id, part.slot),
+                            Some(group),
+                            binding.socket.clone(),
+                        ));
+                    }
+                }
+            }
+        }
     } else if let Some((path, bytes)) = manual {
-        vec![(path.clone(), path, bytes, None, None)]
-    } else {
-        Vec::new()
-    };
-    for (key, path, supplied, registry_texture, note) in requests.into_iter().take(64) {
+        requests.push((path.clone(), path, bytes, None, None, Default::default(), Default::default(), None, String::new()));
+    }
+    requests.sort_by_key(|request| request.7.map(|index| if effect_groups.get(index).is_some_and(|group| group.visible) { 1 } else { 2 }).unwrap_or(0));
+    if requests.len() > 128 {
+        warnings.push(format!("{} C3 files exceed the 128-file scene budget; select a smaller attachment set", requests.len()));
+    }
+    for (key, path, supplied, registry_texture, note, material, timing, effect, socket) in requests.into_iter().take(128) {
         check_cancel(cancel)?;
-        let registry_slot = registry_texture.as_ref().and_then(|texture| asset_slot(&mut assets, &mut texture_map, texture, &source_key, known_source, client));
+        let registry_slot =
+            registry_texture.as_ref().and_then(|texture| asset_slot(&mut assets, &mut texture_map, texture, &source_key, source, known_source, client));
+        let mut additional_slots = material
+            .additional_textures
+            .iter()
+            .filter_map(|texture| asset_slot(&mut assets, &mut texture_map, texture, &source_key, source, known_source, client))
+            .collect::<Vec<_>>();
+        let mix_slot = std::array::from_fn(|stage| material.texture_stages.get(stage).and_then(Option::as_ref).and_then(|path| texture_map.get(path).copied()));
+        if !matches!(
+            material.mix_mode,
+            0 | 2 | 4 | 7 | 8 | 9 | 10 | 11 | 13 | 15 | 16 | 19 | 23 | 28 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 | 40 | 45
+        ) {
+            warnings.push(format!(
+                "{key}: MixOpt {} needs client lighting, reflection, or a shader not reproduced by this preview; displaying its primary material",
+                material.mix_mode
+            ));
+        }
         let start = meshes.len();
         let result = (|| {
             if path.is_empty() {
@@ -207,10 +294,15 @@ fn load(
             } else {
                 client
                     .ok_or_else(|| "Choose a client folder for mapped resources".to_string())?
-                    .read(&path, photocraft_c3::MAX_FILE_BYTES)
+                    .read_for_source(&path, Path::new(source), photocraft_c3::MAX_FILE_BYTES)
                     .map_err(|error| error.to_string())?
             };
-            let mut model = photocraft_c3::decode(&bytes).map_err(|error| error.to_string())?;
+            let animated = Arc::new(photocraft_c3::animation::AnimatedModel::decode(&bytes).map_err(|error| error.to_string())?);
+            let next_animation_bytes = animation_bytes.saturating_add(animated.memory_bytes());
+            if next_animation_bytes > 512 * 1024 * 1024 {
+                return Err("Scene animations exceed the 512 MiB decoded-data budget".into());
+            }
+            let mut model = animated.model.clone();
             let vertices = model.meshes.iter().map(|mesh| mesh.vertices.len()).sum::<usize>();
             let indices = model.meshes.iter().map(|mesh| mesh.indices.len()).sum::<usize>();
             if vertex_count.saturating_add(vertices) > 2_000_000
@@ -219,13 +311,14 @@ fn load(
             {
                 return Err("Object exceeds the bounded geometry preview budget".into());
             }
+            animation_bytes = next_animation_bytes;
             vertex_count += vertices;
             index_count += indices;
             warnings.append(&mut model.warnings);
             for mesh in &mut model.meshes {
                 let texture =
                     registry_texture.clone().or_else(|| client.and_then(|client| client.texture_path(&mesh.texture))).unwrap_or_else(|| mesh.texture.clone());
-                let slot = asset_slot(&mut assets, &mut texture_map, &texture, &source_key, known_source, client);
+                let slot = asset_slot(&mut assets, &mut texture_map, &texture, &source_key, source, known_source, client);
                 if slot.is_none() && !texture.is_empty() {
                     warnings.push(format!("Texture budget reached: {texture}"));
                 }
@@ -233,8 +326,39 @@ fn load(
                     mesh.texture = texture;
                 }
                 slots.push(slot);
+                mix_slots.push(mix_slot);
             }
-            visible.extend(visibility(&model));
+            let mut defaults = visibility(&model);
+            for (index, mesh) in model.meshes.iter().enumerate() {
+                if matches!(mesh.variant.as_str(), "Particles" | "Trail")
+                    && let Some(slot) = defaults.get_mut(index)
+                {
+                    *slot = true;
+                }
+            }
+            visible.extend(defaults);
+            materials.extend(std::iter::repeat_n(material.clone(), model.meshes.len()));
+            let parent = if socket.is_empty() {
+                None
+            } else {
+                animations.iter().enumerate().find_map(|(index, animation): (usize, &super::effects::SceneAnimation)| {
+                    animation.effect.is_none().then(|| animation.asset.resolve_socket(&socket).map(|socket| (index, socket.to_owned()))).flatten()
+                })
+            };
+            // v_r_weapon/v_l_weapon identify the standalone weapon's root. Other
+            // attachment names must resolve to an actual socket, or stay explicit.
+            if !socket.is_empty() && parent.is_none() && !matches!(socket.as_str(), "v_r_weapon" | "v_l_weapon" | "v_body" | "v_mount" | "v_mantle" | "v_head")
+            {
+                warnings.push(format!("{key}: attachment socket {socket} is absent from the loaded base geometry"));
+            }
+            animations.push(super::effects::SceneAnimation {
+                asset: animated,
+                range: start..start + model.meshes.len(),
+                material: material.clone(),
+                timing: timing.clone(),
+                effect,
+                parent,
+            });
             meshes.extend(model.meshes);
             Ok(())
         })();
@@ -243,19 +367,38 @@ fn load(
             warnings.push(format!("{path}: {note}"));
         }
         let mut textures = slots.get(start..meshes.len()).unwrap_or_default().iter().copied().flatten().chain(registry_slot).collect::<Vec<_>>();
+        textures.append(&mut additional_slots);
         textures.sort_unstable();
         textures.dedup();
         pieces.push(Piece { key, path, range: start..meshes.len(), visible: true, note: failure, textures });
     }
+    super::effects::synchronize_durations(&mut animations);
     if meshes.is_empty() && object.is_none() {
         return Err(warnings.first().cloned().unwrap_or_else(|| "Object has no drawable C3 geometry".into()));
     }
     let mut min = [f32::INFINITY; 3];
     let mut max = [f32::NEG_INFINITY; 3];
-    for vertex in meshes.iter().flat_map(|mesh| &mesh.vertices) {
-        for ((min, max), position) in min.iter_mut().zip(&mut max).zip(vertex.position) {
-            *min = min.min(position);
-            *max = max.max(position);
+    for animation in &animations {
+        if animation.effect.is_some_and(|index| effect_groups.get(index).is_some_and(|group| !group.visible)) {
+            continue;
+        }
+        let socket = animation
+            .parent
+            .as_ref()
+            .and_then(|(index, name)| animations.get(*index).and_then(|parent| parent.asset.socket(name, 0)))
+            .unwrap_or(photocraft_c3::math::IDENTITY);
+        for x in [animation.asset.model.min[0], animation.asset.model.max[0]] {
+            for y in [animation.asset.model.min[1], animation.asset.model.max[1]] {
+                for z in [animation.asset.model.min[2], animation.asset.model.max[2]] {
+                    let point = [x, y, z].map(|v| v * animation.material.scale);
+                    let point = std::array::from_fn(|i| point[i] + animation.timing.offset[i]);
+                    let point = photocraft_c3::math::transform(point, &socket);
+                    for ((lo, hi), value) in min.iter_mut().zip(&mut max).zip(point) {
+                        *lo = lo.min(value);
+                        *hi = hi.max(value);
+                    }
+                }
+            }
         }
     }
     if min.iter().any(|value| !value.is_finite()) {
@@ -277,6 +420,11 @@ fn load(
         textures: vec![None; model.meshes.len()],
         path: pieces.iter().find(|part| !part.range.is_empty()).or_else(|| pieces.first()).map(|part| part.path.clone()).unwrap_or_default(),
         title: object.map(|object| object.label.clone()).unwrap_or_else(|| "Selected C3".into()),
+        animations,
+        effects: effect_groups,
+        materials,
+        mix_slots,
+        mix_textures: vec![[None, None, None]; model.meshes.len()],
         object_id: object.map(|object| object.id.clone()),
         model,
         selected,
@@ -309,8 +457,8 @@ fn load(
                     let index = full_index.get_or_insert_with(|| client_assets(&client.root, cancel, Level::Full).map_err(|error| error.to_string()));
                     index.as_ref().map_err(Clone::clone)?.texture_path(&asset.key).ok_or_else(|| "Texture is unavailable".to_string())?
                 };
-                asset.path = client.editable_path(&key).map(|path| path.to_string_lossy().into_owned());
-                client.read(&key, 32 * 1024 * 1024).map_err(|error| error.to_string())?
+                asset.path = client.editable_path_for_source(&key, Path::new(source)).map(|path| path.to_string_lossy().into_owned());
+                client.read_for_source(&key, Path::new(source), 32 * 1024 * 1024).map_err(|error| error.to_string())?
             } else {
                 return Err("Choose a client folder to locate this texture".into());
             };
@@ -352,5 +500,10 @@ fn load(
         }
     }
     loaded.textures = loaded.texture_slots.iter().map(|slot| slot.and_then(|slot| decoded.get(slot).cloned()).flatten()).collect();
+    loaded.mix_textures = loaded
+        .mix_slots
+        .iter()
+        .map(|slots| std::array::from_fn(|stage| slots.get(stage).copied().flatten().and_then(|slot| decoded.get(slot).cloned()).flatten()))
+        .collect();
     Ok(loaded)
 }

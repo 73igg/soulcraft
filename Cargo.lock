@@ -4341,6 +4341,7 @@ name = "photocraft-c3"
 version = "0.8.2"
 dependencies = [
  "encoding_rs",
+ "flate2",
  "serde_json",
  "thiserror 2.0.21",
 ]

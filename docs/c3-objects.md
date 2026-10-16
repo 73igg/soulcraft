@@ -2,7 +2,7 @@
 
 Open a texture from a client containing `c3` and `ini` directories. For a copied texture, select the client using **Client folder** in the right preview pane. A texture under `decomp/c3` can use the parent client's `ini` directory automatically.
 
-SoulCraft reads the registry paths and the matching INI section's numbered mesh/texture pairs. It assembles the sibling C3 files in their existing coordinates using each file's initial embedded pose. The INI texture binding takes precedence over an obsolete texture name embedded by an exporter. If a texture belongs to several records, choose the intended record in the **C3 Preview** tab's INI object selector.
+SoulCraft reads the registry paths and the matching INI section's numbered mesh/texture pairs. It assembles sibling C3 files, plays their animation and attaches effects declared by the client catalogs. The INI texture binding takes precedence over an obsolete texture name embedded by an exporter. If a texture belongs to several records, choose the intended record in the **C3 Preview** tab's INI object selector.
 
 ## Inspect the object
 
@@ -13,7 +13,7 @@ The **C3 Preview** tab sits beside **Layers**, **Channels** and **Paths**. Open 
 - Use **Edit [texture]** under a piece to open or select its texture document.
 - Missing or malformed files remain in the list with an explanation. Other available pieces still render.
 
-The right 3D pane retains free rotation, zoom, pan, lighting, transparency, up-axis and manual mesh replacement. Hiding pieces preserves the initial framing and camera. **Load mesh** replaces the preview with the selected standalone C3; **Refresh** in the object tab restores automatic lookup and rereads the client catalogs.
+The right 3D pane retains free rotation, zoom, pan, lighting, transparency, up-axis and manual mesh replacement. Wheel and Zoom slider cover 0.1×–1000×. Hiding pieces preserves framing and camera; **Fit all** frames the currently visible pose, while **Fit model** centers the base mesh without hiding effects. **Load mesh** replaces the preview with the selected standalone C3; **Refresh** in the object tab restores automatic lookup and rereads the client catalogs. **Effects** hides all effects while **Base object** controls the underlying object. **Pause / Play** freezes or resumes effect animation. See [C3 effects](c3-effects.md) for timing, rendering and individual attachment controls.
 
 ## Edit several textures
 
@@ -41,8 +41,8 @@ Known catalogs include armor, weapons, mounts, hair, heads, armets, mantles, mis
 
 Declared `Part` and `Amount` counts bound the active numbered slots. Missing mesh or texture fields remain inspectable when another part identifies the object. Explicit INI texture paths use direct loose/archive lookup, with missing references reported promptly. UTF-8 and GBK catalogs are supported, including large modern effect tables; malformed catalogs produce notes while other available catalogs remain usable.
 
-The view shows static geometry. Socket-linked nested effects, animation playback, particle/trail simulation, and the full client material pipeline are not assembled or simulated. Direct multipart records keep their original geometry transforms; they are not automatically attached to another character's animated skeleton.
+The view supports PHY1-5 motion, baked particles, trails, sockets and common client materials. PartEffect and three- through six-field Action3DEffect catalogs supply attachment choices. Camera/world state, the client's shared particle randomness, linked-emitter history and some environment/custom shaders remain accuracy boundaries; see the effect guide. Direct multipart records keep their original geometry transforms and do not acquire a character skeleton automatically.
 
-Objects are bounded to 64 C3 files, 512 internal mesh parts, two million vertices, six million indices and 64 distinct texture references. Texture previews are reduced to at most 2048 pixels per side with a 64 MiB total decoded budget; retained encoded originals have a 128 MiB total budget. Full texture documents retain the original DDS layout. Opening linked textures together is limited to 64 million editable pixels across their inspected surfaces; larger files can be opened individually through File > Open. Budget failures and missing resources produce notes while other pieces remain usable.
+Scenes are bounded to 128 C3 files, 512 internal mesh parts, two million vertices, six million indices, 128 distinct texture references and 512 MiB of decoded animation data. Each INI object has at most 64 numbered slots. Texture previews are reduced to at most 2048 pixels per side with a 64 MiB total decoded budget; retained encoded originals have a 128 MiB total budget. Full texture documents retain the original DDS layout. Opening linked textures together is limited to 64 million editable pixels across their inspected surfaces; larger files can be opened individually through File > Open. Budget failures and missing resources produce notes while other pieces remain usable.
 
-Control commands: `preview.c3.object {id}`, `preview.c3.piece {index, visible|solo}` / `{all}`, and `preview.c3.textures {index, visible?}` / `{all:true}` / `{single:true}`. `ui.inspect.c3Preview` reports object choices, piece ranges, material bindings, open documents and tile visibility.
+Control commands: `preview.c3.object {id}`, `preview.c3.piece {index, visible|solo}` / `{all}`, `preview.c3.textures {index, visible?}` / `{all:true}` / `{single:true}`, and `preview.c3.playback` for playback, visibility and per-piece materials. `ui.inspect.c3Preview` reports object choices, effect groups, piece ranges, material bindings, playback, open documents and tile visibility.

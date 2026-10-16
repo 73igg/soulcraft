@@ -1,6 +1,8 @@
 //! Read-only client asset discovery. INI associations take precedence over
 //! filenames and exporter texture strings. Paths never escape the chosen root.
 use crate::{Error, MAX_FILE_BYTES, Result};
+mod effects;
+pub use effects::EffectBinding;
 use std::{
     collections::{HashMap, HashSet},
     fs,
@@ -38,9 +40,11 @@ pub struct ClientAssets {
     files: HashMap<String, PathBuf>,
     associations: HashMap<String, Vec<Candidate>>,
     archives: Vec<crate::archive::LazyArchive>,
+    packed: crate::packed::Packed,
     models: HashSet<String>,
     objects: Vec<ObjectDefinition>,
     object_textures: HashMap<String, Vec<usize>>,
+    effects: effects::Catalog,
     pub warnings: Vec<String>,
 }
 
@@ -76,6 +80,10 @@ fn catalog_name(name: &str) -> bool {
             | "armet.ini"
             | "misc.ini"
             | "mantle.ini"
+            | "parteffect.ini"
+            | "action3deffect.ini"
+            | "action3deffect_new.ini"
+            | "3deffect3.ini"
     )
 }
 fn sorted_candidates(mut result: Vec<Candidate>) -> Vec<Candidate> {
@@ -86,7 +94,7 @@ fn sorted_candidates(mut result: Vec<Candidate>) -> Vec<Candidate> {
     result
 }
 
-fn relative(path: &str) -> Result<String> {
+pub(crate) fn relative(path: &str) -> Result<String> {
     let path = norm(path);
     if path.is_empty() || path.len() > 4096 || Path::new(&path).components().any(|c| !matches!(c, Component::Normal(_))) {
         return Err(Error("asset path must stay within the client folder".into()));
@@ -111,11 +119,19 @@ pub fn read_bounded(path: &Path, limit: usize) -> Result<Vec<u8>> {
 /// only a bounded ancestor chain, without enumerating unrelated client trees.
 pub fn catalog_root(folder: &Path) -> Option<PathBuf> {
     let folder = folder.canonicalize().ok()?;
-    folder
+    let root = folder
         .ancestors()
         .take(12)
         .find(|root| (root.join("ini").is_dir() || root.join("decomp/ini").is_dir()) && (root.join("c3").is_dir() || root.join("decomp/c3").is_dir()))
-        .map(Path::to_path_buf)
+        .map(Path::to_path_buf)?;
+    // An unpacked snapshot can contain stale INIs as well as assets. The live
+    // client directly above its literal decomp folder remains authoritative.
+    if root.file_name().is_some_and(|name| name.eq_ignore_ascii_case("decomp"))
+        && let Some(parent) = root.parent().filter(|parent| parent.join("ini").is_dir() && parent.join("c3").is_dir())
+    {
+        return Some(parent.to_path_buf());
+    }
+    Some(root)
 }
 
 /// Infer a client folder only among a texture's ancestors, never the whole disk.
@@ -201,9 +217,11 @@ impl ClientAssets {
             files: HashMap::new(),
             associations: HashMap::new(),
             archives: Vec::new(),
+            packed: crate::packed::Packed::new(root.clone()),
             models: HashSet::new(),
             objects: Vec::new(),
             object_textures: HashMap::new(),
+            effects: effects::Catalog::default(),
             warnings: Vec::new(),
         };
         let mut packages = Vec::new();
@@ -215,7 +233,7 @@ impl ClientAssets {
                 return Err(Error("cancelled".into()));
             }
             let entry = entry.map_err(|e| Error(e.to_string()))?;
-            if entry.path().extension().is_some_and(|s| s.eq_ignore_ascii_case("dnp")) {
+            if entry.path().extension().is_some_and(|s| s.eq_ignore_ascii_case("dnp") || s.eq_ignore_ascii_case("wdf")) {
                 let ty = entry.file_type().map_err(|e| Error(e.to_string()))?;
                 if ty.is_file() && !ty.is_symlink() {
                     packages.push(entry.path());
@@ -276,9 +294,11 @@ impl ClientAssets {
             files: HashMap::new(),
             associations: HashMap::new(),
             archives: Vec::new(),
+            packed: crate::packed::Packed::new(root.clone()),
             models: HashSet::new(),
             objects: Vec::new(),
             object_textures: HashMap::new(),
+            effects: effects::Catalog::default(),
             warnings: Vec::new(),
         };
         let mut stack = vec![(root.clone(), 0usize)];
@@ -318,7 +338,7 @@ impl ClientAssets {
                     && path
                         .extension()
                         .and_then(|s| s.to_str())
-                        .is_some_and(|s| matches!(s.to_ascii_lowercase().as_str(), "c3" | "dds" | "tga" | "png" | "jpg" | "bmp" | "ini" | "dnp"))
+                        .is_some_and(|s| matches!(s.to_ascii_lowercase().as_str(), "c3" | "dds" | "tga" | "png" | "jpg" | "bmp" | "ini" | "dnp" | "wdf"))
                 {
                     out.files.insert(rel, path);
                 }
@@ -330,7 +350,8 @@ impl ClientAssets {
             .filter(|(k, _)| k.ends_with(".ini") && (k.starts_with("ini/") || k.starts_with("decomp/ini/") || !k.contains('/')))
             .map(|(k, p)| (k.clone(), p.clone()))
             .collect();
-        let mut archives: Vec<_> = out.files.iter().filter(|(k, _)| k.ends_with(".dnp") && !k.contains('/')).map(|(k, p)| (k.clone(), p.clone())).collect();
+        let mut archives: Vec<_> =
+            out.files.iter().filter(|(k, _)| (k.ends_with(".dnp") || k.ends_with(".wdf")) && !k.contains('/')).map(|(k, p)| (k.clone(), p.clone())).collect();
         archives.sort();
         for (name, path) in archives.into_iter().take(16) {
             if cancel.load(Ordering::Relaxed) {
@@ -473,7 +494,7 @@ impl ClientAssets {
                 }
                 parts.sort_by_key(|part| (part.slot, part.binding.clone()));
                 parts.truncate(64);
-                if !parts.is_empty() && self.objects.len() < 50_000 {
+                if !parts.is_empty() && self.objects.len() < 100_000 {
                     let index = self.objects.len();
                     let mut seen = HashSet::new();
                     for part in &parts {
@@ -487,7 +508,32 @@ impl ClientAssets {
                 }
             }
         }
+        self.effects = effects::Catalog::read(&catalogs, &textures);
+        for (index, object) in self.objects.iter().enumerate() {
+            for texture in self.effects.textures(&object.id) {
+                let matches = self.object_textures.entry(texture.to_string()).or_default();
+                if !matches.contains(&index) {
+                    matches.push(index);
+                }
+            }
+        }
         Ok(())
+    }
+
+    pub fn material(&self, object: &str, slot: usize) -> crate::material::Material {
+        self.effects.material(object, slot)
+    }
+    pub fn timing(&self, object: &str) -> crate::material::Timing {
+        self.effects.timing(object)
+    }
+    pub fn part_timing(&self, object: &str, slot: usize) -> crate::material::Timing {
+        self.effects.part_timing(object, slot)
+    }
+    pub fn effect_bindings(&self, object: &ObjectDefinition) -> Vec<EffectBinding> {
+        self.effects.bindings(object)
+    }
+    pub fn effect_object(&self, name: &str) -> Option<&ObjectDefinition> {
+        self.effects.definition(name).and_then(|id| self.object(id))
     }
 
     pub fn object(&self, id: &str) -> Option<&ObjectDefinition> {
@@ -509,19 +555,111 @@ impl ClientAssets {
                 }
             }
         }
+        let mut alias = None;
+        if indices.is_empty() {
+            // A registered texture can be unused by TextureN while its paired
+            // 3dobj resource is still a catalog mesh (e.g. female claws).
+            // Only follow an explicit shared registry ID, never nearby numbers.
+            let registered = if self.associations.contains_key(&key) {
+                Some(key.clone())
+            } else {
+                let base = basename(texture);
+                let mut keys = self.associations.keys().filter(|path| basename(path) == base);
+                keys.next().cloned().filter(|_| keys.next().is_none())
+            };
+            if let Some(registered) = registered {
+                let meshes: HashSet<_> = self
+                    .associations
+                    .get(&registered)
+                    .into_iter()
+                    .flatten()
+                    .filter(|candidate| candidate.rank == 1)
+                    .map(|candidate| candidate.path.clone())
+                    .collect();
+                if !meshes.is_empty() {
+                    indices.extend(
+                        self.objects
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, object)| {
+                                !object.id.starts_with("3deffect")
+                                    && object.parts.iter().any(|part| part.mesh.as_ref().is_some_and(|mesh| meshes.contains(mesh)))
+                            })
+                            .map(|(index, _)| index),
+                    );
+                    alias = Some((registered, meshes));
+                }
+            }
+        }
         indices.sort_unstable();
         indices.dedup();
         let mut objects: Vec<_> = indices.into_iter().filter_map(|index| self.objects.get(index)).collect();
-        objects.sort_by(|a, b| (a.id.starts_with("3deffect"), &a.id).cmp(&(b.id.starts_with("3deffect"), &b.id)));
+        objects.sort_by_cached_key(|object| {
+            let enabled = self.effect_bindings(object).iter().any(|binding| binding.enabled);
+            // EO's first super-quality row ends in 4. Prefer that registered
+            // glow over the basic row when both share a texture. Other client
+            // quality schemes retain their first enabled registered variant.
+            let super_variant = enabled
+                && object.id.strip_prefix("weapon.ini:").is_some_and(|section| {
+                    let section = section.to_ascii_lowercase();
+                    section.strip_prefix("weapon").unwrap_or(&section).parse::<u32>().is_ok_and(|item| item % 10 == 4)
+                });
+            (object.id.starts_with("3deffect"), !enabled, !super_variant, object.id.clone())
+        });
         objects.truncate(512);
-        objects.into_iter().cloned().collect()
+        objects
+            .into_iter()
+            .map(|object| {
+                let mut object = object.clone();
+                if let Some((texture, meshes)) = &alias {
+                    for part in &mut object.parts {
+                        if part.mesh.as_ref().is_some_and(|mesh| meshes.contains(mesh)) {
+                            part.texture = Some(texture.clone());
+                        }
+                    }
+                }
+                object
+            })
+            .collect()
     }
 
     /// A loose editable texture keeps its actual file path. Packed textures are
     /// opened as documents without an overwrite target and use Save As.
     pub fn editable_path(&self, key: &str) -> Option<PathBuf> {
         let path = self.loose_path(key)?.canonicalize().ok()?;
+        if path.strip_prefix(&self.root).ok().is_some_and(|p| p.starts_with("decomp")) && self.packed.contains(&norm(key)) {
+            return None;
+        }
         path.starts_with(&self.root).then_some(path)
+    }
+
+    // Opening an explicitly extracted texture selects that extraction's
+    // resource generation. A newer packed mesh can have entirely different UVs
+    // under the same resource ID. Ordinary client reads retain native priority.
+    fn extracted_path(&self, key: &str, source: &Path) -> Result<Option<PathBuf>> {
+        let extraction = self.root.join("decomp");
+        if !source.canonicalize().ok().is_some_and(|path| path.starts_with(&extraction)) {
+            return Ok(None);
+        }
+        let key = relative(key)?;
+        let path = extraction.join(key.strip_prefix("decomp/").unwrap_or(&key));
+        match path.canonicalize() {
+            Ok(path) if !path.starts_with(&extraction) => Err(Error("extracted asset resolved outside its folder".into())),
+            Ok(path) => Ok(path.is_file().then_some(path)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(Error(error.to_string())),
+        }
+    }
+
+    /// Pair an extracted document with its extracted mesh/material assets when
+    /// available; otherwise use the client's normal loose/packed resolution.
+    pub fn read_for_source(&self, key: &str, source: &Path, limit: usize) -> Result<Vec<u8>> {
+        if let Some(path) = self.extracted_path(key, source)? { read_bounded(&path, limit.min(MAX_FILE_BYTES)) } else { self.read(key, limit) }
+    }
+
+    /// Editable companion selected with the same provenance as read_for_source.
+    pub fn editable_path_for_source(&self, key: &str, source: &Path) -> Option<PathBuf> {
+        self.extracted_path(key, source).ok().flatten().or_else(|| self.editable_path(key))
     }
 
     fn add(&mut self, tex: &str, mesh: &str, reason: &str, rank: u8) {
@@ -578,7 +716,7 @@ impl ClientAssets {
         model_paths.sort();
         for folder in ["mesh", "weapon", "hair", "head", "mantle", "npc", "monster"] {
             let path = format!("c3/{folder}/{stem}.c3");
-            if self.loose_path(&path).is_some() || self.archives.iter().any(|a| a.contains(&path)) {
+            if self.loose_path(&path).is_some() || self.packed.contains(&path) || self.archives.iter().any(|a| a.contains(&path)) {
                 result.push(Candidate { path, reason: "matching filename".into(), rank: 2 });
             }
         }
@@ -647,13 +785,20 @@ impl ClientAssets {
 
     pub fn read(&self, relative_path: &str, limit: usize) -> Result<Vec<u8>> {
         let path = relative(relative_path)?;
-        let Some(file) = self.loose_path(&path) else {
+        let loose = self.loose_path(&path);
+        let native = loose.as_ref().is_some_and(|p| p.strip_prefix(&self.root).ok().is_some_and(|p| !p.starts_with("decomp")));
+        if !native && let Some(bytes) = self.packed.read(&path, limit.min(MAX_FILE_BYTES))? {
+            return Ok(bytes);
+        }
+        let Some(file) = loose else {
             let mut archive_error = None;
             for archive in &self.archives {
                 match archive.read(&path, limit.min(MAX_FILE_BYTES)) {
                     Ok(Some(bytes)) => return Ok(bytes),
                     Ok(None) => {}
-                    Err(e) => archive_error = Some(e.to_string()),
+                    Err(e) => {
+                        archive_error.get_or_insert_with(|| e.to_string());
+                    }
                 }
             }
             return Err(Error(format!(
@@ -674,7 +819,7 @@ impl ClientAssets {
         if self.loose_path(&key).is_some() {
             return Some(key);
         }
-        if relative(&key).is_ok() && self.archives.iter().any(|a| a.contains(&key)) {
+        if relative(&key).is_ok() && (self.packed.contains(&key) || self.archives.iter().any(|a| a.contains(&key))) {
             return Some(key);
         }
         let base = basename(embedded);
@@ -682,7 +827,7 @@ impl ClientAssets {
         if self.loose_path(&conventional).is_some() {
             return Some(conventional);
         }
-        if self.archives.iter().any(|a| a.contains(&conventional)) {
+        if self.packed.contains(&conventional) || self.archives.iter().any(|a| a.contains(&conventional)) {
             return Some(conventional);
         }
         if self.loose_path(&base).is_some() {
