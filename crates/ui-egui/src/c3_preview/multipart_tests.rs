@@ -297,6 +297,11 @@ fn ini_assembly_shares_textures_and_preserves_missing_piece_rows() {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn triangle() -> Vec<u8> {
+    triangle_with_texture(b"obsolete-exporter-texture.dds")
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn triangle_with_texture(texture: &[u8]) -> Vec<u8> {
     fn u(out: &mut Vec<u8>, value: u32) {
         out.extend(value.to_le_bytes());
     }
@@ -327,7 +332,7 @@ fn triangle() -> Vec<u8> {
     for value in [0u16, 1, 2] {
         mesh.extend(value.to_le_bytes());
     }
-    name(&mut mesh, b"obsolete-exporter-texture.dds");
+    name(&mut mesh, texture);
     f(&mut mesh, &[0., 0., 0., 1., 0., 1.]);
     f(&mut mesh, &photocraft_c3::math::IDENTITY);
     for value in [1, 0, 0, 0] {
@@ -338,4 +343,39 @@ fn triangle() -> Vec<u8> {
     u(&mut file, mesh.len() as u32);
     file.extend(mesh);
     file
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn missing_effect_texture_uses_exact_adjacent_image_without_overriding_a_registered_texture() {
+    use std::fs;
+    let root = std::env::temp_dir().join(format!("scene-sidecar-{}", std::process::id()));
+    for dir in ["ini", "c3/mesh", "c3/texture"] {
+        fs::create_dir_all(root.join(dir)).unwrap();
+    }
+    fs::write(root.join("ini/3dobj.ini"), "1=c3/mesh/body.c3\n").unwrap();
+    fs::write(root.join("ini/3deffectobj.ini"), "2=c3/mesh/glow.c3\n3=c3/mesh/registered.c3\n").unwrap();
+    fs::write(root.join("ini/3dtexture.ini"), "10=c3/texture/body.png\n20=c3/texture/registered.png\n").unwrap();
+    fs::write(root.join("ini/weapon.ini"), "[510034]\nPart=1\nMesh0=1\nTexture0=10\n").unwrap();
+    fs::write(root.join("ini/Action3DEffect.ini"), "9999.9999.510.034=glow\n").unwrap();
+    fs::write(root.join("ini/3deffect.ini"), "[glow]\nAmount=2\nEffectId0=2\nTextureId0=999\nEffectId1=3\nTextureId1=20\n").unwrap();
+    for name in ["body", "glow", "registered"] {
+        fs::write(root.join(format!("c3/mesh/{name}.c3")), triangle_with_texture(b"")).unwrap();
+    }
+    fs::write(root.join("c3/mesh/glow.c3"), triangle()).unwrap();
+    let red = image::RgbaImage::from_pixel(2, 2, image::Rgba([255, 0, 0, 255]));
+    let green = image::RgbaImage::from_pixel(2, 2, image::Rgba([0, 255, 0, 255]));
+    red.save(root.join("c3/texture/body.png")).unwrap();
+    red.save(root.join("c3/texture/registered.png")).unwrap();
+    green.save(root.join("c3/mesh/glow.tga")).unwrap();
+    green.save(root.join("c3/mesh/registered.tga")).unwrap();
+    let source = root.join("c3/texture/body.png").to_string_lossy().into_owned();
+    let scene = scene_worker::discover(&source, None, None, None, &AtomicBool::new(false), |_| {}).unwrap().loaded.unwrap();
+    assert_eq!(scene.texture_slots, [Some(0), Some(1), Some(2)]);
+    assert_eq!(scene.assets[1].key, "c3/mesh/glow.tga");
+    assert_eq!(scene.assets[2].key, "c3/texture/registered.png");
+    assert_eq!(&scene.textures[1].as_ref().unwrap().pixels[..4], &[0, 255, 0, 255]);
+    assert_eq!(&scene.textures[2].as_ref().unwrap().pixels[..4], &[255, 0, 0, 255]);
+    assert!(scene.warnings.iter().any(|note| note.contains("using adjacent mesh texture c3/mesh/glow.tga")));
+    fs::remove_dir_all(root).unwrap();
 }

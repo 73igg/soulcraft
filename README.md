@@ -64,7 +64,7 @@ The fork also retains PhotoCraft 0.8.2's newer editing tools and background file
 
 ### Getting started with texture editing
 
-1. Extract the [Windows portable build](https://github.com/73igg/soulcraft/releases/latest) into its own folder and run **photocraft.exe**.
+1. Extract the [Windows portable build](https://github.com/73igg/soulcraft/releases/latest) into its own folder and run **soulcraft.exe**.
 2. Open a DDS or TGA from your client. If the client cannot be inferred, select **Client folder** and choose its asset directory, normally containing `c3` and `ini`.
 3. For a new skin or another image format, open **Window > C3 Texture Preview**. Use the matching-model dropdown or **Load mesh** when you need to choose a model yourself.
 4. Edit the texture and inspect the preview. Save a `.pcraft` working copy to retain editor layers; save TGA with its alpha channel or use DDS Save/Export controls to write the game texture and choose whether to preserve or regenerate mips.

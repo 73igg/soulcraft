@@ -109,7 +109,7 @@ mod tests {
             let icon = attr(s, "Icon").expect("shortcuts name their icon");
             assert!(icons.contains(&icon), "shortcut icon {icon} isn't an <Icon>");
             if attr(s, "Advertise") == Some("yes") {
-                // Every shortcut in the MSI targets photocraft.exe.
+                // Every shortcut in the MSI targets soulcraft.exe.
                 assert!(icon.ends_with(".exe"), "advertised shortcut icon {icon} must end in .exe like its target (ICE50)");
             }
         }

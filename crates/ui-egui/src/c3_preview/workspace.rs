@@ -14,7 +14,7 @@ fn logical(path: &str, root: Option<&str>) -> String {
     let path = normal(path).trim_start_matches("//?/").to_string();
     let root = root.map(|root| normal(root).trim_start_matches("//?/").trim_end_matches('/').to_string());
     let key = root.as_ref().and_then(|root| path.strip_prefix(&(root.clone() + "/"))).unwrap_or(&path);
-    key.strip_prefix("decomp/").unwrap_or(key).to_string()
+    key.strip_prefix("decomp/").or_else(|| key.strip_prefix("c3.extracted/")).unwrap_or(key).to_string()
 }
 
 pub(super) fn sync_documents(app: &mut PhotocraftApp) {

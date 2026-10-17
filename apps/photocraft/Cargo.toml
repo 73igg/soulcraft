@@ -3,9 +3,14 @@ name = "photocraft"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-default-run = "photocraft"
+default-run = "soulcraft"
+autobins = false
 description = "Photocraft: an open-source, native image editor"
 build = "build.rs"
+
+[[bin]]
+name = "soulcraft"
+path = "src/main.rs"
 
 [features]
 # Open HEIC/HEIF photos (the optional photocraft-heif crate). Not default so distributors choose
@@ -99,5 +104,5 @@ name = "mac_menu_appkit"
 harness = false
 
 [build-dependencies]
-# Icon + VERSIONINFO for photocraft.exe; build.rs only uses it when targeting Windows.
+# Icon + VERSIONINFO for soulcraft.exe; build.rs only uses it when targeting Windows.
 winresource = "0.1"

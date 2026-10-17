@@ -1,4 +1,4 @@
-//! Windows only: embed the app icon and version info (VERSIONINFO) into `photocraft.exe`.
+//! Windows only: embed the app icon and version info (VERSIONINFO) into `soulcraft.exe`.
 //!
 //! On every other target this does nothing. A missing resource compiler is a warning, so a
 //! cross-compile from macOS or Linux still links, unless `PHOTOCRAFT_REQUIRE_WINRES=1` (set by the
@@ -13,16 +13,16 @@ fn main() {
     }
     let mut res = winresource::WindowsResource::new();
     res.set_icon("../../assets/app-icon/photocraft.ico")
-        .set("ProductName", "PhotoCraft Custom - DDS")
-        .set("FileDescription", "PhotoCraft Custom image editor with DDS support")
+        .set("ProductName", "SoulCraft - DDS + C3")
+        .set("FileDescription", "SoulCraft image editor with DDS and C3 support")
         .set("CompanyName", "Personal custom build")
         .set("LegalCopyright", "Copyright (c) the PhotoCraft authors. MIT OR Apache-2.0.")
-        .set("OriginalFilename", "photocraft.exe")
-        .set("InternalName", "photocraft");
+        .set("OriginalFilename", "soulcraft.exe")
+        .set("InternalName", "soulcraft");
     if let Err(e) = res.compile() {
         if std::env::var_os("PHOTOCRAFT_REQUIRE_WINRES").is_some() {
             panic!("embedding Windows resources failed: {e}");
         }
-        println!("cargo:warning=photocraft.exe built without icon/version resources: {e}");
+        println!("cargo:warning=soulcraft.exe built without icon/version resources: {e}");
     }
 }

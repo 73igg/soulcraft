@@ -98,7 +98,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         })
                         .collect::<Vec<_>>();
                     Ok(
-                        serde_json::json!({"mesh":mesh,"bytes":bytes.len(),"parts":model.model.meshes.len(),"frames":model.frame_count,"decodedBytes":model.memory_bytes(),"bounds":[model.model.min,model.model.max],"sockets":sockets,"warnings":model.model.warnings,"textures":textures}),
+                        serde_json::json!({"mesh":mesh,"bytes":bytes.len(),"parts":model.model.meshes.len(),"frames":model.frame_count,"decodedBytes":model.memory_bytes(),"bounds":[model.model.min,model.model.max],"materialScale":material.scale,"meshTextures":model.model.meshes.iter().map(|mesh|&mesh.texture).collect::<Vec<_>>(),"sockets":sockets,"warnings":model.model.warnings,"textures":textures}),
                     )
                 })();
                 rows.push(serde_json::json!({"binding":binding,"enabled":enabled,"slot":part.slot,"result":result.unwrap_or_else(|e|serde_json::json!({"error":e.to_string()}))}));

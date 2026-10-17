@@ -2,6 +2,8 @@
 //! filenames and exporter texture strings. Paths never escape the chosen root.
 use crate::{Error, MAX_FILE_BYTES, Result};
 mod effects;
+mod role_parts;
+mod wdb;
 pub use effects::EffectBinding;
 use std::{
     collections::{HashMap, HashSet},
@@ -54,6 +56,11 @@ pub fn norm(path: &str) -> String {
 pub fn basename(path: &str) -> String {
     norm(path).rsplit('/').next().unwrap_or_default().into()
 }
+/// Extraction directories retain the client's logical resource names.
+pub fn resource_key(path: &str) -> String {
+    let key = norm(path);
+    key.strip_prefix("decomp/").or_else(|| key.strip_prefix("c3.extracted/")).unwrap_or(&key).to_string()
+}
 fn id(value: &str) -> String {
     let value = value.trim();
     if value.bytes().all(|b| b.is_ascii_digit()) {
@@ -73,6 +80,7 @@ fn catalog_name(name: &str) -> bool {
             | "armor.ini"
             | "weapon.ini"
             | "3dsimpleobj.ini"
+            | "3dsimpleobjex.ini"
             | "3dflyingobj.ini"
             | "hair.ini"
             | "head.ini"
@@ -81,6 +89,8 @@ fn catalog_name(name: &str) -> bool {
             | "misc.ini"
             | "mantle.ini"
             | "parteffect.ini"
+            | "roleparteffect.ini"
+            | "roleweapon3deffect.ini"
             | "action3deffect.ini"
             | "action3deffect_new.ini"
             | "3deffect3.ini"
@@ -117,17 +127,21 @@ pub fn read_bounded(path: &Path, limit: usize) -> Result<Vec<u8>> {
 
 /// A decompiled c3 tree can have its registries in the parent client. Search
 /// only a bounded ancestor chain, without enumerating unrelated client trees.
+fn client_layout(root: &Path) -> bool {
+    (root.join("ini").is_dir() || root.join("decomp/ini").is_dir())
+        && (root.join("c3").is_dir()
+            || root.join("decomp/c3").is_dir()
+            || root.join("c3.tpi").is_file()
+            || root.join("ini/c3.wdb").is_file()
+            || root.join("decomp/ini/c3.wdb").is_file())
+}
 pub fn catalog_root(folder: &Path) -> Option<PathBuf> {
     let folder = folder.canonicalize().ok()?;
-    let root = folder
-        .ancestors()
-        .take(12)
-        .find(|root| (root.join("ini").is_dir() || root.join("decomp/ini").is_dir()) && (root.join("c3").is_dir() || root.join("decomp/c3").is_dir()))
-        .map(Path::to_path_buf)?;
+    let root = folder.ancestors().take(12).find(|root| client_layout(root)).map(Path::to_path_buf)?;
     // An unpacked snapshot can contain stale INIs as well as assets. The live
     // client directly above its literal decomp folder remains authoritative.
     if root.file_name().is_some_and(|name| name.eq_ignore_ascii_case("decomp"))
-        && let Some(parent) = root.parent().filter(|parent| parent.join("ini").is_dir() && parent.join("c3").is_dir())
+        && let Some(parent) = root.parent().filter(|parent| client_layout(parent))
     {
         return Some(parent.to_path_buf());
     }
@@ -331,7 +345,7 @@ impl ClientAssets {
                 if ty.is_dir() {
                     // At the root read only asset/catalog trees, unless this is a
                     // standalone folder without c3. Never crawl unrelated clients.
-                    if depth != 0 || !has_c3 || matches!(rel.as_str(), "c3" | "ini" | "decomp") {
+                    if depth != 0 || !has_c3 || matches!(rel.as_str(), "c3" | "ini" | "decomp" | "c3.extracted") {
                         stack.push((path, depth + 1));
                     }
                 } else if ty.is_file()
@@ -398,10 +412,42 @@ impl ClientAssets {
                 self.warnings.push("Remaining client INIs exceed the discovery budget".into());
                 break;
             }
-            match parse_ini(&bytes) {
+            match if name == "roleparteffect.ini" { role_parts::parse(&bytes) } else { parse_ini(&bytes) } {
                 Ok(ini) => catalogs.push((name, ini)),
                 Err(error) => self.warnings.push(format!("Skipped {name}: {error}")),
             }
+        }
+        // WDB clients keep the same resource catalogs as binary DBC tables.
+        // Explicit loose catalogs remain overrides; absent ones come from WDB.
+        for folder in [self.root.join("ini"), self.root.join("decomp/ini")] {
+            let path = folder.join("c3.wdb");
+            if !path.is_file() {
+                continue;
+            }
+            let tables = (|| {
+                let path = path.canonicalize().map_err(|error| Error(error.to_string()))?;
+                if !path.starts_with(&self.root) {
+                    return Err(Error("WDB resolved outside the client folder".into()));
+                }
+                wdb::read(&read_bounded(&path, MAX_FILE_BYTES)?, cancel)
+            })();
+            match tables {
+                Ok(tables) => {
+                    for (name, ini) in tables {
+                        if let Some((_, existing)) = catalogs.iter_mut().find(|(key, _)| *key == name) {
+                            for (key, value) in ini.flat {
+                                existing.flat.entry(key).or_insert(value);
+                            }
+                            let mut sections = existing.sections.iter().map(|section| section.name.to_lowercase()).collect::<HashSet<_>>();
+                            existing.sections.extend(ini.sections.into_iter().filter(|section| sections.insert(section.name.to_lowercase())));
+                        } else {
+                            catalogs.push((name, ini));
+                        }
+                    }
+                }
+                Err(error) => self.warnings.push(format!("Skipped c3.wdb: {error}")),
+            }
+            break;
         }
         let flat = |name: &str| catalogs.iter().find(|(k, _)| k == name).map(|(_, v)| v.flat.clone()).unwrap_or_default();
         let textures = flat("3dtexture.ini");
@@ -539,12 +585,13 @@ impl ClientAssets {
     pub fn object(&self, id: &str) -> Option<&ObjectDefinition> {
         self.objects.iter().find(|object| object.id == id)
     }
+    /// All catalog records, including objects stored in a WDB database.
+    pub fn object_definitions(&self) -> &[ObjectDefinition] {
+        &self.objects
+    }
     pub fn objects_for_texture(&self, texture: &str) -> Vec<ObjectDefinition> {
         let canonical = Path::new(texture).canonicalize().ok();
-        let relative = canonical.as_deref().and_then(|path| path.strip_prefix(&self.root).ok()).map(|path| {
-            let key = norm(&path.to_string_lossy());
-            key.strip_prefix("decomp/").unwrap_or(&key).to_string()
-        });
+        let relative = canonical.as_deref().and_then(|path| path.strip_prefix(&self.root).ok()).map(|path| resource_key(&path.to_string_lossy()));
         let key = relative.unwrap_or_else(|| norm(texture));
         let mut indices = self.object_textures.get(&key).cloned().unwrap_or_default();
         if indices.is_empty() {
@@ -627,7 +674,7 @@ impl ClientAssets {
     /// opened as documents without an overwrite target and use Save As.
     pub fn editable_path(&self, key: &str) -> Option<PathBuf> {
         let path = self.loose_path(key)?.canonicalize().ok()?;
-        if path.strip_prefix(&self.root).ok().is_some_and(|p| p.starts_with("decomp")) && self.packed.contains(&norm(key)) {
+        if path.strip_prefix(&self.root).ok().is_some_and(|p| p.starts_with("decomp") || p.starts_with("c3.extracted")) && self.packed.contains(&norm(key)) {
             return None;
         }
         path.starts_with(&self.root).then_some(path)
@@ -637,12 +684,16 @@ impl ClientAssets {
     // resource generation. A newer packed mesh can have entirely different UVs
     // under the same resource ID. Ordinary client reads retain native priority.
     fn extracted_path(&self, key: &str, source: &Path) -> Result<Option<PathBuf>> {
-        let extraction = self.root.join("decomp");
-        if !source.canonicalize().ok().is_some_and(|path| path.starts_with(&extraction)) {
+        let canonical = source.canonicalize().ok();
+        let Some(extraction) = ["decomp", "c3.extracted"]
+            .into_iter()
+            .map(|name| self.root.join(name))
+            .find(|folder| canonical.as_ref().is_some_and(|source| source.starts_with(folder)))
+        else {
             return Ok(None);
-        }
+        };
         let key = relative(key)?;
-        let path = extraction.join(key.strip_prefix("decomp/").unwrap_or(&key));
+        let path = extraction.join(resource_key(&key));
         match path.canonicalize() {
             Ok(path) if !path.starts_with(&extraction) => Err(Error("extracted asset resolved outside its folder".into())),
             Ok(path) => Ok(path.is_file().then_some(path)),
@@ -685,12 +736,7 @@ impl ClientAssets {
         let base = basename(texture);
         let texture_path = Path::new(texture);
         let canonical = texture_path.canonicalize().ok().or_else(|| Some(texture_path.parent()?.canonicalize().ok()?.join(texture_path.file_name()?)));
-        let rel = canonical
-            .as_deref()
-            .unwrap_or_else(|| Path::new(texture))
-            .strip_prefix(&self.root)
-            .ok()
-            .map(|p| norm(&p.to_string_lossy()).trim_start_matches("decomp/").to_string());
+        let rel = canonical.as_deref().unwrap_or_else(|| Path::new(texture)).strip_prefix(&self.root).ok().map(|p| resource_key(&p.to_string_lossy()));
         let mut result = Vec::new();
         for (path, entries) in &self.associations {
             if Some(path) == rel.as_ref() || path == &tex {
@@ -752,10 +798,11 @@ impl ClientAssets {
 
     fn loose_path(&self, key: &str) -> Option<PathBuf> {
         let key = relative(key).ok()?;
-        if let Some(file) = self.files.get(&key).or_else(|| self.files.get(&format!("decomp/{key}"))) {
+        if let Some(file) = self.files.get(&key).or_else(|| self.files.get(&format!("decomp/{key}"))).or_else(|| self.files.get(&format!("c3.extracted/{key}")))
+        {
             return Some(file.clone());
         }
-        for key in [&key, &format!("decomp/{key}")] {
+        for key in [&key, &format!("decomp/{key}"), &format!("c3.extracted/{key}")] {
             let path = self.root.join(key);
             if path.is_file() {
                 return Some(path);
@@ -786,7 +833,8 @@ impl ClientAssets {
     pub fn read(&self, relative_path: &str, limit: usize) -> Result<Vec<u8>> {
         let path = relative(relative_path)?;
         let loose = self.loose_path(&path);
-        let native = loose.as_ref().is_some_and(|p| p.strip_prefix(&self.root).ok().is_some_and(|p| !p.starts_with("decomp")));
+        let native =
+            loose.as_ref().is_some_and(|p| p.strip_prefix(&self.root).ok().is_some_and(|p| !p.starts_with("decomp") && !p.starts_with("c3.extracted")));
         if !native && let Some(bytes) = self.packed.read(&path, limit.min(MAX_FILE_BYTES))? {
             return Ok(bytes);
         }

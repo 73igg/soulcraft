@@ -25,6 +25,29 @@ impl Drop for Folder {
     }
 }
 #[test]
+fn happy_pets_role_references_and_weapon_actions_keep_their_declared_contexts() {
+    let f = Folder::new("happy-role-parts");
+    f.write("ini/3dobj.ini", "1=c3/mesh/body.c3\n2=c3/mesh/wing.c3\n3=c3/mesh/weapon.c3\n");
+    f.write("ini/3dtexture.ini", "1=c3/texture/body.dds\n2=c3/texture/wing.dds\n3=c3/texture/weapon.dds\n");
+    f.write("ini/armor.ini", "[1191000]\nPart=1\nMesh0=1\nTexture0=1\n");
+    f.write("ini/misc.ini", "[999118008]\nPart=1\nMesh0=2\nTexture0=2\n");
+    f.write("ini/weapon.ini", "[209980]\nPart=1\nMesh0=3\nTexture0=3\n");
+    f.write("ini/RolePartEffect.ini", "[PartReference]\n4 191000 9 118008\n[PartEffect]\n9 118008 mancoat+v_misc\n[Adjust]\n1 9 wrong 100 0 0 0 0 0 0\n");
+    f.write("ini/Action3DEffect.ini", "9999.9999.209.980=weapon209980\n");
+    f.write("ini/RoleWeapon3DEffect.ini", "9999.0401.209.980=weapon_attack\n");
+    let assets = ClientAssets::quick(&f.0, &AtomicBool::new(false)).unwrap();
+    for id in ["armor.ini:1191000", "misc.ini:999118008"] {
+        let bindings = assets.effect_bindings(assets.object(id).unwrap());
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(bindings[0].effect, "mancoat+v_misc");
+        assert!(bindings[0].enabled);
+    }
+    let weapon = assets.effect_bindings(assets.object("weapon.ini:209980").unwrap());
+    assert_eq!(weapon.len(), 2);
+    assert!(weapon.iter().any(|binding| binding.effect == "weapon209980" && binding.enabled));
+    assert!(weapon.iter().any(|binding| binding.effect == "weapon_attack" && !binding.enabled));
+}
+#[test]
 fn active_catalogs_override_decomp_snapshots_and_dotted_action_keys_attach_super_effects() {
     let f = Folder::new("active-effects");
     f.write("decomp/ini/weapon.ini", "[420230]\nPart=1\nMesh0=1\nTexture0=1\n");

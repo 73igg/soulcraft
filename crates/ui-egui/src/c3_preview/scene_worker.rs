@@ -7,7 +7,7 @@ use super::{
 };
 use photocraft_c3::{
     Model,
-    assets::{ClientAssets, ObjectDefinition, basename, catalog_root, infer_root, norm, read_bounded},
+    assets::{ClientAssets, ObjectDefinition, basename, catalog_root, infer_root, norm, read_bounded, resource_key},
 };
 use std::{
     collections::HashMap,
@@ -135,7 +135,7 @@ fn source_key(source: &str, assets: Option<&ClientAssets>) -> String {
     let canonical = Path::new(source).canonicalize().ok();
     let relative =
         canonical.as_deref().and_then(|source| assets.and_then(|assets| source.strip_prefix(&assets.root).ok())).map(|path| norm(&path.to_string_lossy()));
-    relative.map(|key| key.strip_prefix("decomp/").unwrap_or(&key).to_string()).unwrap_or_else(|| norm(source))
+    relative.map(|key| resource_key(&key)).unwrap_or_else(|| norm(source))
 }
 
 fn asset_slot(
@@ -172,6 +172,17 @@ fn asset_slot(
         note: None,
     });
     Some(index)
+}
+
+fn adjacent_texture(mesh: &str, source: &str, client: &ClientAssets) -> Option<String> {
+    let (stem, extension) = mesh.rsplit_once('.')?;
+    if !extension.eq_ignore_ascii_case("c3") {
+        return None;
+    }
+    ["dds", "tga"]
+        .into_iter()
+        .map(|extension| format!("{stem}.{extension}"))
+        .find(|texture| client.read_for_source(texture, Path::new(source), 32 * 1024 * 1024).is_ok())
 }
 
 fn load(
@@ -315,6 +326,19 @@ fn load(
             vertex_count += vertices;
             index_count += indices;
             warnings.append(&mut model.warnings);
+            // A few original effect rows have dangling TextureId values and
+            // obsolete exporter paths. Recover only the exact adjacent filename,
+            // in the same extraction/package as the mesh; never a nearby ID or
+            // a same-basename image elsewhere in the client.
+            let registry_texture = registry_texture.clone().or_else(|| {
+                if effect.is_some() && note.is_some() {
+                    client.and_then(|client| adjacent_texture(&path, source, client)).inspect(|texture| {
+                        warnings.push(format!("{key}: catalog texture is unavailable; using adjacent mesh texture {texture}"));
+                    })
+                } else {
+                    None
+                }
+            });
             for mesh in &mut model.meshes {
                 let texture =
                     registry_texture.clone().or_else(|| client.and_then(|client| client.texture_path(&mesh.texture))).unwrap_or_else(|| mesh.texture.clone());
@@ -448,7 +472,8 @@ fn load(
                 // An INI path is authoritative. Reading it directly also checks
                 // lazy package indexes; a missing path must not scan the client
                 // or substitute an unrelated file with the same basename.
-                let authoritative = object.is_some_and(|definition| definition.parts.iter().any(|part| part.texture.as_deref() == Some(asset.key.as_str())));
+                let authoritative = asset.key.contains(['/', '\\'])
+                    || object.is_some_and(|definition| definition.parts.iter().any(|part| part.texture.as_deref() == Some(asset.key.as_str())));
                 let key = if authoritative {
                     asset.key.clone()
                 } else if let Some(key) = client.texture_path(&asset.key) {

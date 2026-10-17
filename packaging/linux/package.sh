@@ -61,7 +61,7 @@ STAGE="$WORK/root"
 rm -rf "$WORK"
 
 # ---- stage an FHS tree (shared by every format) -------------------------------------------------
-install -Dm755 "$BIN/photocraft" "$STAGE/usr/bin/photocraft"
+install -Dm755 "$BIN/soulcraft" "$STAGE/usr/bin/photocraft"
 install -Dm755 "$BIN/photocraft-cli" "$STAGE/usr/bin/photocraft-cli"
 "${CROSS_COMPILE:-}strip" "$STAGE/usr/bin/photocraft" "$STAGE/usr/bin/photocraft-cli" 2>/dev/null || true
 install -Dm644 "$HERE/$APP_ID.desktop" "$STAGE/usr/share/applications/$APP_ID.desktop"

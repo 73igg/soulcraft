@@ -1,6 +1,34 @@
 # SoulCraft - Windows x64 (DDS + C3)
 
-One Windows application for DDS/TGA texture editing, linked C3 objects and animated effects. Download **soulcraft-windows-x64-portable.zip**, extract it into its own folder and run **photocraft.exe**. Keep the runtime DLL and license files beside the application. Portable preferences use `PhotoCraftData` beside the executable.
+## SoulCraft executable and HappyPets update — 2026-10-17
+
+The Windows editor is now **soulcraft.exe**. Launch instructions, portable-mode
+documentation, Windows executable metadata and installer registrations use that
+filename. Extract the complete updated ZIP before launching the editor.
+
+The HappyPets fixes passed 62 C3 tests, 2,708 UI tests (12 existing ignored),
+C3/UI all-targets Clippy, layering and WASM checks including HEIF. Fifteen
+optimized desktop cases cover HappyPets and Eudemons, with additional scale,
+texture and offscreen render checks for the reported weapons. See
+[HappyPets verification](docs/happy-pets-validation.md).
+
+## HappyPets weapon proportions and missing effect textures
+
+Correct oversized effects on `510034`, `510214` and `510274`: an opaque WDB
+field was incorrectly used as a geometry scale. Recover `510304`'s broken
+effect texture references from the exact adjacent DDS/TGA files, with preview
+notes. Valid catalog textures and explicit INI scales retain priority.
+
+## HappyPets catalogs and archives
+
+HappyPets' binary WDB catalogs now provide linked weapons, armor, mounts,
+accessories, textures and named effects. The loader recognizes its `9999`
+effect contexts and role attachment tables. Patched TPI free-block directories
+are supported, and editing textures under `c3.extracted` retains the matching
+extracted mesh and materials. Existing client workflows remain available in
+the same combined application. See [HappyPets support](docs/happy-pets.md).
+
+One Windows application for DDS/TGA texture editing, linked C3 objects and animated effects. Download **soulcraft-windows-x64-portable.zip**, extract it into its own folder and run **soulcraft.exe**. Keep the runtime DLL and license files beside the application. Portable preferences use `PhotoCraftData` beside the executable.
 
 ## Animated C3 effects and close-up camera controls — 2026-10-16
 

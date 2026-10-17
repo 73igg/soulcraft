@@ -118,8 +118,9 @@ impl Package {
         }
         let count = r.u32()?;
         let index_bytes = r.u32()? as usize;
-        r.take(4)?;
-        if count > 1_000_000 || index_bytes.checked_add(48) != Some(bytes.len()) {
+        let free_blocks = r.u32()? as usize;
+        let index_end = index_bytes.checked_add(48);
+        if count > 1_000_000 || free_blocks > 1_000_000 || index_end.and_then(|end| end.checked_add(free_blocks.saturating_mul(8))) != Some(bytes.len()) {
             return Err(Error("TPI index exceeds its bounds".into()));
         }
         let data = path.with_extension("tpd").canonicalize().map_err(|e| Error(e.to_string()))?;
@@ -165,9 +166,12 @@ impl Package {
                 return Err(Error("duplicate TPI entry".into()));
             }
         }
-        if r.remaining() != 0 {
+        // Live-patched clients append offset/length descriptors for unused TPD
+        // blocks. They are not resource entries and are never dereferenced.
+        if r.remaining() != free_blocks.saturating_mul(8) {
             return Err(Error("unexpected data after TPI index".into()));
         }
+        r.take(free_blocks.saturating_mul(8))?;
         Ok(Self { path: data, length, entries })
     }
     fn read(&self, key: &str, limit: usize) -> Result<Option<Vec<u8>>> {
@@ -446,6 +450,24 @@ mod tests {
         assert_eq!(p.read("c3/effect/test.c3", 100).unwrap(), Some(payload.to_vec()));
         assert!(p.read("c3/effect/test.c3", 1).is_err());
         assert!(p.read("c3/absent.c3", 100).unwrap().is_none());
+        let mut patched = index.clone();
+        patched[44..48].copy_from_slice(&1u32.to_le_bytes());
+        patched.extend(8u32.to_le_bytes());
+        patched.extend(32u32.to_le_bytes());
+        fs::write(&path, &patched).unwrap();
+        let patched_package = Package::tpi(&path).unwrap();
+        assert_eq!(patched_package.read("c3/effect/test.c3", 100).unwrap(), Some(payload.to_vec()));
+        let extracted = root.join("c3.extracted/c3/effect/test.dds");
+        fs::create_dir_all(extracted.parent().unwrap()).unwrap();
+        fs::write(&extracted, b"old texture").unwrap();
+        fs::write(extracted.with_extension("c3"), b"old mesh").unwrap();
+        let assets = crate::assets::ClientAssets::loose(&root, &std::sync::atomic::AtomicBool::new(false)).unwrap();
+        assert_eq!(assets.read("c3/effect/test.c3", 100).unwrap(), payload);
+        assert_eq!(assets.read_for_source("c3/effect/test.c3", &extracted, 100).unwrap(), b"old mesh");
+        assert!(assets.editable_path("c3/effect/test.c3").is_none());
+        patched.pop();
+        fs::write(&path, &patched).unwrap();
+        assert!(Package::tpi(&path).is_err());
         let end = index.len();
         index[end - 8..end - 4].copy_from_slice(&999u32.to_le_bytes());
         fs::write(&path, index).unwrap();

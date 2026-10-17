@@ -22,3 +22,8 @@ The GUI version text remains `0.8.2 (dev build)` because compilation and native 
 ## Scope
 
 See [C3 effects](c3-effects.md) for format and rendering coverage. The separate S3 XML engine is not simulated. Unavailable catalog resources and unsupported packages remain explicit. Catalog/decoder coverage does not establish pixel-identical output for all clients or all animation frames. `.pcraft` retains each texture document, not an entire client scene.
+
+
+## HappyPets compatibility ? 2026-10-17
+
+Binary WDB catalogs, role attachments, patched TPI free blocks and c3.extracted bindings are now supported. 61 C3 tests, 2,707 UI tests, all-targets Clippy, layering and WebAssembly checks passed. The supplied client survey decoded 28,044 meshes and resolved all 1,653 enabled effect bindings. Seven offscreen effect scenes, live paint/undo and nine actual optimized-editor cases passed. See [HappyPets verification](happy-pets-validation.md) for the fixtures, original-data exceptions and package checks.

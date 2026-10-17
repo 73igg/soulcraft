@@ -126,7 +126,7 @@ goes in `CARGO_TARGET_<TRIPLE>_RUSTFLAGS`, so host build scripts aren't affected
   script is a no-op, even if `PHOTOCRAFT_REQUIRE_WINRES` is set, and the web build
   doesn't touch that crate. Both set ProductName to PhotoCraft, CompanyName to
   Learning Machines LLC and the same copyright line. The GUI description is
-  "PhotoCraft image editor" (`photocraft.exe`). The CLI description is
+  "PhotoCraft image editor" (`soulcraft.exe`). The CLI description is
   "PhotoCraft command-line interface", with OriginalFilename `photocraft-cli.exe`
   and InternalName `photocraft-cli`. Version strings are the Cargo package version,
   so a pre-release tag is kept; the numeric file and product versions are
@@ -152,7 +152,7 @@ goes in `CARGO_TARGET_<TRIPLE>_RUSTFLAGS`, so host build scripts aren't affected
   as the cached icon filename, and an extensionless filename can render as a blank document
   icon. `packaging/windows/check-icons.ps1` checks the references and extensions in CI;
   `package.ps1` also validates the built MSI with ICE50 before signing it.
-- **Portable zip:** it ships `packaging/windows/portable.txt` beside `photocraft.exe`. That
+- **Portable zip:** it ships `packaging/windows/portable.txt` beside `soulcraft.exe`. That
   marker (or a `PhotoCraft.portable` file) switches on portable mode: preferences, presets,
   recovery autosaves and the GPU startup marker go to `PhotoCraftData\` next to the exe instead
   of `%APPDATA%\Photocraft`. If that folder isn't writable the app warns and uses `%APPDATA%`.

@@ -34,6 +34,8 @@ pub(super) struct Catalog {
     part_effects: HashMap<String, HashMap<String, String>>,
     actions: HashMap<String, Vec<ActionBinding>>,
     identities: HashMap<String, ItemIdentity>,
+    role_effects: HashMap<String, String>,
+    role_references: HashMap<String, String>,
 }
 
 fn uint(fields: &HashMap<String, String>, key: &str, default: u32) -> u32 {
@@ -46,6 +48,17 @@ impl Catalog {
     pub(super) fn read(catalogs: &[(String, Ini)], textures: &HashMap<String, String>) -> Self {
         let mut out = Self::default();
         for (name, ini) in catalogs {
+            if name == "roleparteffect.ini" {
+                for section in &ini.sections {
+                    let target = match section.name.as_str() {
+                        "parteffect" => &mut out.role_effects,
+                        "partreference" => &mut out.role_references,
+                        _ => continue,
+                    };
+                    target.extend(section.fields.clone());
+                }
+                continue;
+            }
             if matches!(name.as_str(), "armor.ini" | "weapon.ini") {
                 for section in &ini.sections {
                     let key = section.name.to_lowercase();
@@ -83,7 +96,7 @@ impl Catalog {
                 }
                 continue;
             }
-            if matches!(name.as_str(), "action3deffect.ini" | "action3deffect_new.ini") {
+            if matches!(name.as_str(), "action3deffect.ini" | "action3deffect_new.ini" | "roleweapon3deffect.ini") {
                 // The last three fields are action.family.suffix. Earlier
                 // fields describe attachment contexts and can themselves be999
                 // wildcards; they must not be mistaken for the action.
@@ -117,7 +130,10 @@ impl Catalog {
                         // Transformation looks such as 531 must stay selectable,
                         // but cannot supply a standalone weapon's default glow.
                         let ordinary_appearance = action_index == 0
-                            || fields.get(action_index - 1).and_then(|field| field.parse::<u32>().ok()).is_some_and(|look| matches!(look, 0 | 1 | 2 | 999));
+                            || fields
+                                .get(action_index - 1)
+                                .and_then(|field| field.parse::<u32>().ok())
+                                .is_some_and(|look| matches!(look, 0 | 1 | 2 | 999 | 9999));
                         out.actions.entry(item.to_string()).or_default().push(ActionBinding {
                             key: key.clone(),
                             effect: value.clone(),
@@ -319,6 +335,21 @@ impl Catalog {
                 out.push(EffectBinding { effect: effect.into(), socket, source: source.clone(), enabled });
             }
         };
+        // RolePartEffect uses equipment types (4 = body, 9 = miscellaneous)
+        // and item IDs separately from body-prefixed MESH object IDs.
+        if let Some(part) = match catalog {
+            "armor.ini" => Some(4),
+            "misc.ini" => Some(9),
+            _ => None,
+        } && let Ok(number) = section.parse::<u32>()
+        {
+            let item = identity.map(|identity| identity.item.clone()).unwrap_or_else(|| (number % 1_000_000).to_string());
+            let key = format!("{part}.{item}");
+            let target = self.role_references.get(&key).unwrap_or(&key);
+            if let Some(value) = self.role_effects.get(target) {
+                add(value, format!("RolePartEffect {key} -> {target}"), true);
+            }
+        }
         let variants = |table: &HashMap<String, String>| {
             let mut keys = table
                 .keys()
@@ -362,11 +393,11 @@ impl Catalog {
             // remain separately selectable, and do not all play over one another.
             let applicable = |binding: &&ActionBinding| {
                 (catalog != "weapon.ini" || binding.ordinary_appearance)
-                    && identity.is_none_or(|item| binding.look.is_none_or(|look| look == item.look || look == 999))
+                    && identity.is_none_or(|item| binding.look.is_none_or(|look| look == item.look || matches!(look, 999 | 9999)))
             };
             // The native loader stores _N as independent effect channels.
             // All channels for the selected actor context play together.
-            let context = actions.iter().filter(applicable).filter(|binding| binding.action == 999).map(|binding| &binding.actor_context).min();
+            let context = actions.iter().filter(applicable).filter(|binding| matches!(binding.action, 999 | 9999)).map(|binding| &binding.actor_context).min();
             let fallback = actions.iter().filter(applicable).find(|binding| matches!(binding.action, 100 | 101));
             for binding in actions {
                 add(
@@ -374,7 +405,7 @@ impl Catalog {
                     format!("Action3DEffect {}", binding.key),
                     applicable(&binding)
                         && match context {
-                            Some(context) => binding.action == 999 && &binding.actor_context == context,
+                            Some(context) => matches!(binding.action, 999 | 9999) && &binding.actor_context == context,
                             None => fallback.is_some_and(|fallback| binding.actor_context == fallback.actor_context && binding.effect == fallback.effect),
                         },
                 );

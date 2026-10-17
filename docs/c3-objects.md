@@ -1,5 +1,9 @@
 # Linked C3 objects
 
+HappyPets clients are also supported through their binary `ini/c3.wdb` catalogs
+and TPI/TPD archives. Textures under `c3.extracted/c3` retain their extraction's
+mesh and material bindings. See [HappyPets support](happy-pets.md).
+
 Open a texture from a client containing `c3` and `ini` directories. For a copied texture, select the client using **Client folder** in the right preview pane. A texture under `decomp/c3` can use the parent client's `ini` directory automatically.
 
 SoulCraft reads the registry paths and the matching INI section's numbered mesh/texture pairs. It assembles sibling C3 files, plays their animation and attaches effects declared by the client catalogs. The INI texture binding takes precedence over an obsolete texture name embedded by an exporter. If a texture belongs to several records, choose the intended record in the **C3 Preview** tab's INI object selector.

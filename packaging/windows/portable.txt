@@ -1,6 +1,6 @@
 PhotoCraft portable mode
 
-While this file sits next to photocraft.exe, PhotoCraft keeps its preferences, brush presets,
+While this file sits next to soulcraft.exe, PhotoCraft keeps its preferences, brush presets,
 crash-recovery autosaves and startup state in the PhotoCraftData folder beside it, and writes
 nothing to %APPDATA%. Copy the whole folder to move PhotoCraft with its settings.
 
